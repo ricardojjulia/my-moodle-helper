@@ -11,5 +11,18 @@ requests>=2.31.0
 aiofiles>=23.2.1
 python-docx>=1.1.0
 
-# Background scheduler
+# Background scheduler (optional — app starts without it, scheduled reviews run on-demand only)
 apscheduler>=3.10.0
+
+# Database: SQLite — part of Python's standard library (sqlite3 module).
+# No installation required. The database file (app/library.db) is created
+# automatically on first run. Not listed as a pip dependency for that reason.
+#
+# Practical limits:
+#   - Single writer at a time (WAL mode enabled for read concurrency).
+#   - Works well up to ~5,000 courses / tens of thousands of versions.
+#   - Course version JSON blobs are typically 50–500 KB each;
+#     SQLite's default per-value limit is 1 GB.
+#   - Theoretical file-size ceiling is 281 TB; practical limit is your disk.
+#   - For multi-process deployments or very large libraries (10,000+ courses),
+#     migrate to PostgreSQL (swap database.py connection logic only).

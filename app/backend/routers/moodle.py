@@ -702,11 +702,24 @@ def deploy_to_moodle(body: DeployIn):
     except Exception:
         pass
 
+    # 7 ── Build .mbz for full-course restore (best-effort; does not block deploy)
+    mbz_download_url: str | None = None
+    try:
+        from .courses import build_mbz as _build_mbz
+        _build_mbz(body.shortname, body.version_id)
+        mbz_download_url = (
+            f"/api/courses/{body.shortname}/versions/{body.version_id}/download"
+        )
+    except Exception:
+        pass
+
     return {
         "moodle_course_id": moodle_id,
         "url":              course_url,
         "sections_pushed":  pushed,
         "forums_seeded":    forums_seeded,
+        "mbz_url":          mbz_download_url,
+        "restore_url":      f"{moodle_url}/backup/restorefile.php",
     }
 
 

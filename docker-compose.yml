@@ -18,7 +18,7 @@ services:
   moodle:
     build: ./moodle-docker
     ports:
-      - "8080:80"
+      - "4103:80"
     environment:
       MOODLE_DB_HOST: db
       MOODLE_DB_NAME: moodle

@@ -5,8 +5,8 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
 # Kill anything already on these ports
-lsof -ti:8000 | xargs kill -9 2>/dev/null
-lsof -ti:5173 | xargs kill -9 2>/dev/null
+lsof -ti:4100 | xargs kill -9 2>/dev/null
+lsof -ti:4101 | xargs kill -9 2>/dev/null
 sleep 1
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -14,7 +14,7 @@ echo "  Moodle Course Creator"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Start backend, log to /tmp/backend.log
-python3 -m uvicorn app.backend.main:app --reload --host 127.0.0.1 --port 8000 \
+uvicorn app.backend.main:app --reload --host 127.0.0.1 --port 4100 \
   > /tmp/moodle_backend.log 2>&1 &
 BACKEND_PID=$!
 
@@ -22,7 +22,7 @@ BACKEND_PID=$!
 echo -n "  Starting backend"
 for i in $(seq 1 15); do
   sleep 1
-  if curl -s -o /dev/null http://127.0.0.1:8000/api/settings; then
+  if curl -s -o /dev/null http://127.0.0.1:4100/api/settings; then
     echo " ✓"
     break
   fi
@@ -38,7 +38,7 @@ FRONTEND_PID=$!
 echo -n "  Starting frontend"
 for i in $(seq 1 15); do
   sleep 1
-  if curl -s -o /dev/null http://127.0.0.1:5173/; then
+  if curl -s -o /dev/null http://127.0.0.1:4101/; then
     echo " ✓"
     break
   fi
@@ -46,13 +46,13 @@ for i in $(seq 1 15); do
 done
 
 echo ""
-echo "  ✓ Backend  → http://localhost:8000"
-echo "  ✓ Frontend → http://localhost:5173"
-echo "  ✓ API docs → http://localhost:8000/docs"
+echo "  ✓ Backend  → http://localhost:4100"
+echo "  ✓ Frontend → http://localhost:4101"
+echo "  ✓ API docs → http://localhost:4100/docs"
 echo ""
 
 # Open browser
-open "http://localhost:5173" 2>/dev/null || true
+open "http://localhost:4101" 2>/dev/null || true
 
 echo "  Logs: /tmp/moodle_backend.log  /tmp/moodle_frontend.log"
 echo "  Press Ctrl+C to stop."

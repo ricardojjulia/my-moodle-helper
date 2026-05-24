@@ -32,8 +32,11 @@
 | LLM server | — | — | See [Section 16](#16-llm-provider-setup) |
 | Moodle | 5.0 | 5.2 | For import/sync — optional |
 | Git | any | — | For cloning the repo |
+| SQLite | built-in | — | Part of Python's standard library — **no installation required** |
 
 The application runs entirely on your local machine. No public internet access is required unless you use a cloud LLM provider (OpenAI, OpenRouter, Anthropic).
+
+> **`apscheduler` is optional.** It is listed in `requirements.txt` and installed by `pip install -r requirements.txt`. If you skip it or it fails to install, the app starts normally — scheduled reviews simply run on-demand only (no background daemon).
 
 ---
 
@@ -82,16 +85,16 @@ cd ../..
 Run the backend and frontend as two separate processes so both support hot reload:
 
 ```bash
-# Terminal 1 — backend (API on port 8000)
+# Terminal 1 — backend (API on port 4100)
 source .venv/bin/activate
-uvicorn app.backend.main:app --reload
+uvicorn app.backend.main:app --reload --port 4100
 
-# Terminal 2 — frontend dev server (UI on port 5173)
+# Terminal 2 — frontend dev server (UI on port 4101)
 cd app/frontend
 npm run dev
 ```
 
-Open **<http://localhost:5173>** in your browser. API calls are proxied to `:8000` automatically.
+Open **<http://localhost:4101>** in your browser. API calls are proxied to `:4100` automatically.
 
 ### Production mode
 
@@ -100,10 +103,10 @@ Compile the frontend once, then run a single process:
 ```bash
 cd app/frontend && npm run build && cd ../..
 source .venv/bin/activate
-uvicorn app.backend.main:app --host 0.0.0.0 --port 8000
+uvicorn app.backend.main:app --host 0.0.0.0 --port 4100
 ```
 
-Open **<http://localhost:8000>**. FastAPI serves the compiled frontend from `app/frontend/dist/`.
+Open **<http://localhost:4100>**. FastAPI serves the compiled frontend from `app/frontend/dist/`.
 
 ### Convenience script
 
@@ -116,6 +119,16 @@ bash start.sh
 ### Data storage
 
 The app creates `app/library.db` (SQLite) on first run. This file stores all courses, versions, reviews, settings, and Moodle connections. Back it up regularly — it is excluded from git by `.gitignore`.
+
+**SQLite limits to be aware of:**
+
+| Limit | Value | Notes |
+| ----- | ----- | ----- |
+| Concurrent writers | 1 at a time | WAL mode is enabled for read concurrency; avoid running multiple backend workers |
+| Practical library size | ~5,000 courses | Beyond that, query latency increases; consider migrating to PostgreSQL |
+| Per-value (BLOB) size | 1 GB (default) | Each course version JSON is typically 50–500 KB — well within limits |
+| Database file size | disk-bound | Theoretical SQLite ceiling is 281 TB |
+| Migration path | swap `database.py` | Only the connection logic changes; all SQL is standard and portable |
 
 ---
 
@@ -625,11 +638,11 @@ The repo includes a `docker-compose.yml` that starts a full Moodle 5.x + MariaDB
 docker compose up -d
 ```
 
-Moodle will be available at **<http://localhost:8080>** once the containers are healthy (typically 2–3 minutes on first start).
+Moodle will be available at **<http://localhost:4103>** once the containers are healthy (typically 2–3 minutes on first start).
 
 ### First-time Moodle setup
 
-1. Open <http://localhost:8080> and complete the installation wizard.
+1. Open <http://localhost:4103> and complete the installation wizard.
 2. Database credentials (already configured in `docker-compose.yml`):
    - Host: `db`, User: `moodle`, Password: `moodle`, Database: `moodle`
 3. Create an admin account when prompted.
@@ -680,7 +693,7 @@ The LLM returned malformed JSON. Try:
 ### Frontend shows a blank page
 
 - In production mode: check that `app/frontend/dist/` exists — run `cd app/frontend && npm run build` if missing.
-- In development mode: confirm both the backend (`:8000`) and the Vite dev server (`:5173`) are running.
+- In development mode: confirm both the backend (`:4100`) and the Vite dev server (`:4101`) are running.
 
 ### Database errors on startup
 

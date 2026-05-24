@@ -9,7 +9,7 @@
 
 The application has grown from a single-script `.mbz` generator into a full-stack course authoring platform. All core workflows are functional end-to-end. The tool is **production-ready for internal use** at a theological college or seminary, and is suitable for open-source release with the Biblos-specific branding removed.
 
-**Overall readiness: MVP — Ready for internal production use**
+Overall readiness: MVP — Ready for internal production use
 
 ---
 
@@ -101,16 +101,22 @@ The application has grown from a single-script `.mbz` generator into a full-stac
 
 ## Known Limitations
 
-| Area | Limitation | Severity | Workaround |
-| ---- | ---------- | -------- | ---------- |
-| Scheduled Reviews | No background daemon — reviews only run when user clicks "Run overdue" | Low | Run manually from Settings, or add a cron job calling `POST /api/courses/schedules/run-overdue` |
-| Course generation | Fixed at 5 modules; module count is not configurable | Medium | Fork and manually merge content for longer courses |
-| Moodle deploy | Pushes section summaries only; does not create Page/Assignment/Quiz activities | Medium | Use `.mbz` restore for full activity deployment |
-| Bible Validator | Verse-level validation is not performed (only book + chapter) | Low | Manually verify verse references |
-| Curriculum Map | Domain scoring is keyword-based; does not understand context | Low | Scores are indicative, not authoritative |
-| Analytics | Requires specific Moodle webservice functions that may not be enabled by default | Low | Enable functions in Moodle Site administration |
-| Local LLM quality | Output quality is highly model-dependent | Medium | Use the Model Evaluation feature to select the best available model |
-| No authentication | The web app has no login system; intended for local or intranet use | Medium | Run behind a VPN or firewall; do not expose to the open internet |
+| Area | Limitation | Severity | Status |
+| ---- | ---------- | -------- | ------ |
+| Moodle deploy | Pushes section summaries only; does not create Page/Assignment/Quiz activities via REST | Medium | Open — deploy now includes .mbz download + Moodle restore link as a full-course path |
+| Bible Validator | Verse-level validation — actual verse counts per chapter now validated | Low | **Resolved 2026-05-09** |
+| Analytics | Requires specific Moodle webservice functions that may not be enabled by default | Low | Open — enable functions in Moodle Site administration |
+| Local LLM quality | Output quality is highly model-dependent | Medium | Open — use the Model Evaluation feature to select the best available model |
+
+### Resolved
+
+| Area | Was | Resolved |
+| ---- | --- | -------- |
+| Scheduled Reviews | No background daemon | **Resolved** — APScheduler 15-min tick runs automatically when the server is up |
+| Course generation | Fixed at 5 modules | **Resolved** — NumberInput (3–12) in Course Studio; backend clamps to same range |
+| Curriculum Map | Keyword-based scoring | **Resolved** — AI evaluation via LLM scores all 8 domains 0–100 |
+| Version diff | Not surfaced in UI | **Resolved** — VersionDiff component wired in Library course header |
+| Authentication | No login system | **Resolved** — Bearer token auth with enable/disable toggle in Settings |
 
 ---
 
@@ -118,29 +124,19 @@ The application has grown from a single-script `.mbz` generator into a full-stac
 
 ### High Priority
 
-1. **Background scheduler daemon** — Replace the manual "Run overdue" button with a background process (APScheduler or a cron job) that runs reviews automatically. This is the most significant gap in the Scheduled Reviews feature.
-
-2. **Configurable module count** — Allow 3–10 modules instead of the fixed 5, controlled from the Course Studio identity step.
-
-3. **User authentication** — Add optional Basic Auth or API-key protection so the app can be safely exposed on a LAN or small server.
+All high-priority items resolved — see Resolved table above.
 
 ### Medium Priority
 
-4. **Full Moodle activity deploy** — Use the `.mbz` restore API (`core_backup_get_async_backup_progress`) or implement direct Page/Assignment/Quiz creation via REST to go beyond section summaries.
+1. **Full Moodle activity deploy** — Use the `.mbz` restore API or implement direct Page/Assignment/Quiz creation via REST to go beyond section summaries. Deploy now returns a `.mbz` download link + Moodle restore URL as a guided full-restore path.
 
-5. **Curriculum Map AI analysis** — Replace keyword matching with an LLM call that reads module content and tags it with domains more accurately.
-
-6. **Version diff view** — The `VersionDiff.tsx` component exists but is not yet surfaced in the UI; wire it up to the version list so users can compare any two versions side-by-side.
-
-7. **Multi-language course generation** — Add a language selector to the Course Studio that injects language instructions into the LLM prompts (currently the prompt must include language instructions manually).
+2. **Multi-language course generation** — Add a language selector to the Course Studio that injects language instructions into the LLM prompts (currently the prompt must include language instructions manually).
 
 ### Low Priority
 
-8. **Verse-level Bible validation** — Extend the validator to check verse counts per chapter.
+1. **Quiz difficulty tagging** — Tag quiz questions as Easy / Medium / Hard and show distribution stats in the Quiz Bank editor.
 
-9. **Quiz difficulty tagging** — Tag quiz questions as Easy / Medium / Hard and show distribution stats in the Quiz Bank editor.
-
-10. **Export to Word/PDF** — Add a Word (`.docx`) export alongside the HTML export.
+2. **Export to Word/PDF** — Add a Word (`.docx`) export alongside the HTML export.
 
 ---
 

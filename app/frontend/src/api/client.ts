@@ -230,7 +230,7 @@ export interface BibleRef {
   verse: number
   source_field: string
   context: string
-  status: 'valid' | 'unknown_book' | 'chapter_out_of_range' | 'verse_likely_ok'
+  status: 'valid' | 'unknown_book' | 'chapter_out_of_range' | 'verse_out_of_range'
 }
 
 export interface CourseAnalytics {
@@ -308,10 +308,58 @@ export interface AppSettings {
   moodle_url: string
   moodle_token: string
   moodle_token_masked: string
+  canvas_url: string
+  canvas_token_masked: string
   llm_url: string
   llm_api_key_masked: string
   last_model: string
   active_instance: string
+}
+
+export interface CanvasCourse {
+  id: number
+  shortname: string
+  fullname: string
+  summary: string
+  startdate: number
+  enddate: number
+  visible: number
+  category: number
+  category_name: string
+  workflow_state: string
+  total_students: number
+}
+
+export interface CanvasStats {
+  site_name?: string
+  release?: string
+  current_user_fullname?: string
+  current_user_is_admin?: boolean
+  total_courses?: number
+  visible_courses?: number
+  hidden_courses?: number
+  active_courses?: number
+  total_categories?: number
+  courses_per_category?: Record<string, number>
+  total_users?: number
+  active_30d?: number | null
+  never_logged_in?: number | null
+  suspended_users?: number | null
+  site_error?: string
+  courses_error?: string
+  categories_error?: string
+  users_error?: string
+}
+
+export interface CanvasDeploy {
+  id: number
+  version_id: number
+  shortname: string
+  canvas_course_id: number
+  canvas_url: string
+  modules_pushed: number
+  discussions_seeded: number
+  deployed_at: string
 }
 
 export interface MoodleInstance {
@@ -448,7 +496,7 @@ export const api = {
     deploys:       (version_id: number) => get<MoodleDeploy[]>(`/moodle/deploys?version_id=${version_id}`),
     analytics:     (id: number) => get<CourseAnalytics>(`/moodle/courses/${id}/analytics`),
     deploy:        (body: { version_id: number; shortname: string; fullname: string; category_id: number; start_date?: string; end_date?: string }) =>
-                     post<{ moodle_course_id: number; url: string; sections_pushed: number; forums_seeded: number }>('/moodle/deploy', body),
+                     post<{ moodle_course_id: number; url: string; sections_pushed: number; forums_seeded: number; mbz_url: string | null; restore_url: string }>('/moodle/deploy', body),
     importCourse:  (id: number, body: {
       shortname: string; fullname: string;
       start_date?: string; end_date?: string;
@@ -459,6 +507,34 @@ export const api = {
     moduleContent: (courseId: number, cmid: number) =>
                      get<{ id: number; name: string; modname: string; content_html: string; url: string }>(
                        `/moodle/courses/${courseId}/modules/${cmid}`
+                     ),
+  },
+
+  // ── Canvas ────────────────────────────────────────────────────────────────
+  canvas: {
+    ping:          ()              => get<{ ok: boolean; username: string; fullname: string; id: number }>('/canvas/ping'),
+    stats:         ()              => get<CanvasStats>('/canvas/stats'),
+    categories:    ()              => get<{ id: number; name: string }[]>('/canvas/categories'),
+    courses:       ()              => get<CanvasCourse[]>('/canvas/courses'),
+    contents:      (id: number)    => get<MoodleSection[]>(`/canvas/courses/${id}/contents`),
+    updateMeta:    (id: number, body: unknown) => post(`/canvas/courses/${id}/meta`, body),
+    updateModule:  (body: unknown) => post('/canvas/modules/name', body),
+    addDiscussion: (id: number, body: unknown) => post(`/canvas/courses/${id}/discussion`, body),
+    grades:        (id: number)    => get<GradeReport>(`/canvas/courses/${id}/grades`),
+    analytics:     (id: number)    => get<CourseAnalytics>(`/canvas/courses/${id}/analytics`),
+    capabilities:  ()              => get<{ modname: string; can_push: boolean; note: string }[]>('/canvas/capabilities'),
+    deploys:       (version_id: number) => get<CanvasDeploy[]>(`/canvas/deploys?version_id=${version_id}`),
+    deploy:        (body: { version_id: number; shortname: string; fullname: string; account_id?: number; start_date?: string; end_date?: string }) =>
+                     post<{ canvas_course_id: number; url: string; modules_pushed: number; discussions_seeded: number }>('/canvas/deploy', body),
+    importCourse:  (id: number, body: {
+      shortname: string; fullname: string;
+      start_date?: string; end_date?: string;
+      professor?: string; category?: string;
+      instance?: string;
+    }) => post<CourseVersion>(`/canvas/courses/${id}/import`, body),
+    moduleContent: (courseId: number, itemId: number) =>
+                     get<{ id: number; name: string; modname: string; content_html: string; url: string }>(
+                       `/canvas/courses/${courseId}/modules/${itemId}`
                      ),
   },
 }

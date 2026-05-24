@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from pathlib import Path
 
 from .database import init_db, get_settings
-from .routers import courses, llm, moodle, settings
+from .routers import canvas, courses, llm, moodle, settings
 
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
@@ -55,7 +55,7 @@ app = FastAPI(title="Moodle Course Administrator API", version="1.0.0", lifespan
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:4173"],
+    allow_origins=["http://localhost:4101", "http://localhost:4102"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -89,6 +89,7 @@ async def auth_middleware(request: Request, call_next):
 app.include_router(courses.router, prefix="/api")
 app.include_router(llm.router,     prefix="/api")
 app.include_router(moodle.router,  prefix="/api")
+app.include_router(canvas.router,  prefix="/api")
 app.include_router(settings.router,prefix="/api")
 
 # Serve built frontend if it exists

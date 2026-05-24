@@ -105,7 +105,7 @@ Designed for theological colleges, seminaries, and any institution that needs to
 | Language (frontend) | TypeScript | 5.6 |
 | API framework | FastAPI | 0.115 |
 | Language (backend) | Python | 3.11+ |
-| Database | SQLite | built-in |
+| Database | SQLite (built-in) | no install; single-writer; scales to ~5,000 courses |
 | LLM client | OpenAI-compatible REST | any |
 | Course output format | Moodle `.mbz` (ZIP) | Moodle 5.x |
 | Local Moodle (optional) | Docker + Bitnami Moodle | 5.x |
@@ -168,6 +168,9 @@ Full step-by-step instructions are in [docs/HOWTO.md](docs/HOWTO.md).
 | Node.js | 20 LTS | includes npm |
 | LLM server | — | LM Studio ≥ 0.3, Ollama, or a cloud API key |
 | Moodle | 5.x | for `.mbz` import or live sync (optional) |
+| SQLite | built-in | part of Python's standard library — no separate install; `app/library.db` is created automatically on first run |
+
+> **`apscheduler` is optional.** If it is not installed the app starts normally; scheduled reviews run on-demand only (no background daemon).
 
 ### Install
 
@@ -191,21 +194,21 @@ cd ../..
 ```bash
 # Development — hot reload on both ends
 source .venv/bin/activate
-uvicorn app.backend.main:app --reload &   # API on :8000
-cd app/frontend && npm run dev            # UI  on :5173
-# open http://localhost:5173
+uvicorn app.backend.main:app --reload --port 4100 &   # API on :4100
+cd app/frontend && npm run dev                         # UI  on :4101
+# open http://localhost:4101
 
 # Production — frontend served by FastAPI
 cd app/frontend && npm run build && cd ../..
-uvicorn app.backend.main:app --host 0.0.0.0 --port 8000
-# open http://localhost:8000
+uvicorn app.backend.main:app --host 0.0.0.0 --port 4100
+# open http://localhost:4100
 ```
 
 ### Optional: local Moodle via Docker
 
 ```bash
 docker compose up -d
-# Moodle 5.x available at http://localhost:8080
+# Moodle 5.x available at http://localhost:4103
 ```
 
 ---
@@ -260,7 +263,7 @@ docker compose up -d
 
 ## API Reference
 
-Interactive docs at `http://localhost:8000/docs` when running.
+Interactive docs at `http://localhost:4100/docs` when running.
 
 | Group | Endpoint | Description |
 | ----- | -------- | ----------- |

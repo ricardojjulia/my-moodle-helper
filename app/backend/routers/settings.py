@@ -14,11 +14,13 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class SettingsIn(BaseModel):
-    moodle_url:   str = ""
-    moodle_token: str = ""
-    llm_url:      str = ""
-    llm_api_key:  str = ""
-    last_model:   str = ""
+    moodle_url:    str = ""
+    moodle_token:  str = ""
+    canvas_url:    str = ""
+    canvas_token:  str = ""
+    llm_url:       str = ""
+    llm_api_key:   str = ""
+    last_model:    str = ""
 
 
 class MoodleInstanceIn(BaseModel):
@@ -53,6 +55,9 @@ def read_settings():
     token = s.get("moodle_token", "")
     s["moodle_token_masked"] = _mask(token)
     s["active_instance"] = s.get("active_instance", "")
+    canvas_token = s.get("canvas_token", "")
+    s["canvas_token_masked"] = _mask(canvas_token) if canvas_token else ""
+    s.pop("canvas_token", None)   # never send raw token to frontend
     api_key = s.get("llm_api_key", "")
     s["llm_api_key_masked"] = _mask(api_key) if api_key else ""
     s.pop("llm_api_key", None)   # never send the raw key to the frontend
@@ -62,12 +67,25 @@ def read_settings():
 @router.put("")
 def write_settings(body: SettingsIn):
     data = body.model_dump()
-    for url_key in ("moodle_url", "llm_url"):
+
+    # Trim whitespace from all string settings (common when pasting tokens/URLs).
+    for key, value in list(data.items()):
+        if isinstance(value, str):
+            data[key] = value.strip()
+
+    # Canvas tokens are frequently pasted with surrounding quotes or trailing
+    # punctuation from chat/messages; normalize before persisting.
+    if data.get("canvas_token"):
+        data["canvas_token"] = data["canvas_token"].strip("\"'").rstrip(",;:")
+
+    for url_key in ("moodle_url", "canvas_url", "llm_url"):
         if data.get(url_key) and not data[url_key].startswith(("http://", "https://")):
             data[url_key] = "http://" + data[url_key]
+
     for key, value in data.items():
         if value:
             set_setting(key, value)
+
     return get_settings()
 
 

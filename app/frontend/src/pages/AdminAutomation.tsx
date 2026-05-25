@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   ActionIcon,
+  Alert,
   Badge,
   Box,
   Button,
@@ -17,7 +18,7 @@ import {
   Tooltip,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { IconCalendarEvent, IconCheck, IconClock, IconPlayerPlay, IconPlus, IconTrash } from '@tabler/icons-react'
+import { IconAlertTriangle, IconCalendarEvent, IconCheck, IconClock, IconPlayerPlay, IconPlus, IconTrash } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 import { api, type ReviewSchedule } from '../api/client'
 
@@ -40,6 +41,7 @@ export default function AdminAutomationPage() {
   const [running, setRunning] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [deleting, setDeleting] = useState<number | null>(null)
+  const [clearing, setClearing] = useState(false)
   const [newShort, setNewShort] = useState<string | null>(null)
   const [newAgent, setNewAgent] = useState<string>(SCHED_AGENTS[0].id)
   const [newFreq, setNewFreq] = useState<string>('weekly')
@@ -121,6 +123,25 @@ export default function AdminAutomationPage() {
     }
   }
 
+  const clearSchedules = async () => {
+    if (!window.confirm(t('cfg.sched_clear_confirm'))) return
+
+    setClearing(true)
+    try {
+      const res = await api.schedules.clear()
+      setSchedules([])
+      notifications.show({
+        title: t('cfg.sched_clear_done'),
+        message: t('cfg.sched_clear_done_msg', { count: res.deleted }),
+        color: 'green',
+      })
+    } catch (e) {
+      notifications.show({ title: 'Error', message: e instanceof Error ? e.message : String(e), color: 'red' })
+    } finally {
+      setClearing(false)
+    }
+  }
+
   const fmtDate = (iso: string | null) => {
     if (!iso) return '—'
     return new Date(`${iso}Z`).toLocaleDateString(undefined, {
@@ -145,6 +166,17 @@ export default function AdminAutomationPage() {
               disabled={running}
             >
               {t('cfg.sched_run_overdue', { count: overdueCount })}
+            </Button>
+          )}
+          {schedules.length > 0 && (
+            <Button
+              color="red"
+              variant="light"
+              leftSection={clearing ? <Loader size="xs" /> : <IconTrash size={14} />}
+              onClick={clearSchedules}
+              disabled={clearing}
+            >
+              {t('cfg.sched_clear_all')}
             </Button>
           )}
           <Button variant="light" leftSection={<IconPlus size={14} />} onClick={() => setShowForm(value => !value)}>
@@ -219,9 +251,27 @@ export default function AdminAutomationPage() {
 
         {loading && <Loader size="sm" />}
         {!loading && schedules.length === 0 && (
-          <Text size="xs" c="dimmed" ta="center" py="md">
-            {t('cfg.sched_empty')}
-          </Text>
+          <Alert
+            color="orange"
+            variant="light"
+            icon={<IconAlertTriangle size={16} />}
+            title={t('cfg.sched_empty_title')}
+          >
+            <Stack gap="xs">
+              <Text size="sm">{t('cfg.sched_empty_desc')}</Text>
+              <Text size="xs" c="dimmed">
+                {t(courses.length > 0 ? 'cfg.sched_empty_hint' : 'cfg.sched_empty_no_courses')}
+              </Text>
+              <Group gap="xs">
+                <Button size="xs" variant="default" onClick={load}>
+                  {t('cfg.sched_reload')}
+                </Button>
+                <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={() => setShowForm(true)}>
+                  {t('cfg.sched_add')}
+                </Button>
+              </Group>
+            </Stack>
+          </Alert>
         )}
         {schedules.map(schedule => {
           const isOverdue = schedule.enabled === 1 && new Date(`${schedule.next_run_at}Z`) <= new Date()

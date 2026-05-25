@@ -465,6 +465,12 @@ def delete_schedule(schedule_id: int) -> bool:
     return cur.rowcount > 0
 
 
+def clear_schedules() -> int:
+    with db() as conn:
+        cur = conn.execute("DELETE FROM review_schedules")
+    return cur.rowcount
+
+
 def get_overdue_schedules() -> list[dict]:
     with db() as conn:
         rows = conn.execute(

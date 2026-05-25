@@ -18,6 +18,7 @@ Usage:
 """
 
 import argparse
+import ast
 import html
 import json
 import os
@@ -452,42 +453,72 @@ def select_llm(llm_url):
     return selected['model_id']
 
 
-def extract_json(text):
-    """Pull the first JSON object/array from an LLM response."""
+def _repair_json_fallback(candidate):
+  return re.sub(r",(\s*[}\]])", r"\1", candidate)
+
+
+def _load_json_candidate(candidate):
+  try:
+    return json.loads(candidate)
+  except json.JSONDecodeError as first_error:
+    pass
+
+  try:
     from json_repair import repair_json
+  except ImportError:
+    repaired = _repair_json_fallback(candidate)
+    for trial in (repaired, candidate):
+      try:
+        return json.loads(trial)
+      except json.JSONDecodeError:
+        continue
 
-    # Try fenced code block first
-    m = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', text)
-    if m:
-        candidate = m.group(1)
-        try:
-            return json.loads(candidate)
-        except json.JSONDecodeError:
-            return json.loads(repair_json(candidate))
+    for trial in (candidate, repaired):
+      try:
+        parsed = ast.literal_eval(trial)
+      except (SyntaxError, ValueError):
+        continue
+      if isinstance(parsed, (dict, list)):
+        return parsed
 
-    # Find the first { or [ and extract to its matching close
-    for start_char, end_char in [('{', '}'), ('[', ']')]:
-        idx = text.find(start_char)
-        if idx != -1:
-            depth, in_str, escape = 0, False, False
-            for i, c in enumerate(text[idx:], idx):
-                if escape:
-                    escape = False; continue
-                if c == '\\' and in_str:
-                    escape = True; continue
-                if c == '"':
-                    in_str = not in_str; continue
-                if not in_str:
-                    if c == start_char: depth += 1
-                    elif c == end_char:
-                        depth -= 1
-                        if depth == 0:
-                            candidate = text[idx:i+1]
-                            try:
-                                return json.loads(candidate)
-                            except json.JSONDecodeError:
-                                return json.loads(repair_json(candidate))
-    raise ValueError(f"No JSON found in LLM response:\n{text[:300]}")
+    raise first_error
+
+  return json.loads(repair_json(candidate))
+
+
+def extract_json(text):
+  """Pull the first JSON object/array from an LLM response."""
+
+  # Try fenced code block first
+  m = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', text)
+  if m:
+    candidate = m.group(1)
+    return _load_json_candidate(candidate)
+
+  # Find the first { or [ and extract to its matching close
+  for start_char, end_char in [('{', '}'), ('[', ']')]:
+    idx = text.find(start_char)
+    if idx != -1:
+      depth, in_str, escape = 0, False, False
+      for i, c in enumerate(text[idx:], idx):
+        if escape:
+          escape = False
+          continue
+        if c == '\\' and in_str:
+          escape = True
+          continue
+        if c == '"':
+          in_str = not in_str
+          continue
+        if not in_str:
+          if c == start_char:
+            depth += 1
+          elif c == end_char:
+            depth -= 1
+            if depth == 0:
+              candidate = text[idx:i+1]
+              return _load_json_candidate(candidate)
+  raise ValueError(f"No JSON found in LLM response:\n{text[:300]}")
 
 
 # ─── Content generation ────────────────────────────────────────────────────────

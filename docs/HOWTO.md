@@ -569,6 +569,8 @@ The app scans module titles, key topics, objectives, discussion questions, and t
 
 Scheduled reviews let you configure courses to be automatically re-reviewed on a recurring schedule, so quality regressions are caught without manual intervention.
 
+Schedules are opt-in. Generating or importing a course does not create a scheduled review automatically.
+
 ### Creating a Schedule
 
 1. Go to the **Settings** tab.
@@ -599,6 +601,7 @@ Each schedule card shows:
 - **Next run** date/time
 - **Last run** date/time (after at least one review has run)
 - A **delete** button (trash icon) to remove the schedule
+- A **Clear schedules** action in Automation to remove every scheduled review and start fresh
 
 ---
 
@@ -816,6 +819,7 @@ The SQLite database is created automatically at `app/library.db`. If it becomes 
 
 ### Scheduled reviews not running
 
-- Reviews run only when you click **Run N overdue** in Settings — there is no background daemon.
+- Reviews run only for schedules that you create manually.
+- If background scheduling is enabled, overdue schedules run while the backend process is running; otherwise click **Run N overdue** in Settings or Automation.
 - Confirm the LLM URL and model ID are configured correctly in Settings.
 - Check that the course referenced by the schedule still exists in the library.

@@ -6,6 +6,7 @@ python-multipart>=0.0.9
 
 # HTTP (used by create_course.py and moodle router)
 requests>=2.31.0
+json-repair>=0.39.1
 
 # Static file serving
 aiofiles>=23.2.1

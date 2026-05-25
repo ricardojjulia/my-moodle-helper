@@ -566,6 +566,7 @@ export const api = {
                   model_id: string; frequency: string
                 })                 => post<ReviewSchedule>('/courses/schedules', body),
     delete:     (id: number)       => del<{ deleted: number }>(`/courses/schedules/${id}`),
+    clear:      ()                 => del<{ deleted: number }>('/courses/schedules'),
     runOverdue: ()                 => post<{ triggered: number; errors: string[] }>('/courses/schedules/run-overdue', {}),
   },
 

@@ -7,7 +7,7 @@ import tarfile
 import threading
 import xml.etree.ElementTree as ET
 import zipfile
-from datetime import datetime
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
@@ -25,7 +25,7 @@ from ..database import (
     list_versions, get_version, save_version, update_version_content,
     record_build, get_settings, delete_course, delete_version,
     save_review, list_reviews, list_recent_reviews, delete_review,
-    save_schedule, list_schedules, delete_schedule,
+    save_schedule, list_schedules, delete_schedule, clear_schedules,
     get_overdue_schedules, update_schedule_run,
     save_curriculum_eval, get_curriculum_eval, list_curriculum_evals,
 )
@@ -36,7 +36,6 @@ BUILD_DIR = Path(__file__).parent.parent.parent / "builds"
 BUILD_DIR.mkdir(exist_ok=True)
 
 _review_lock = threading.Lock()
-
 
 # ── Request / Response models ─────────────────────────────────────────────────
 
@@ -1767,8 +1766,8 @@ def _do_run_overdue_reviews() -> dict:
 
                 freq_days = {"daily": 1, "weekly": 7, "monthly": 30}.get(
                     sched.get("frequency", "weekly"), 7)
-                now_str  = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-                next_run = (datetime.utcnow() + timedelta(days=freq_days)).strftime("%Y-%m-%d %H:%M:%S")
+                now_str  = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+                next_run = (datetime.now(UTC) + timedelta(days=freq_days)).strftime("%Y-%m-%d %H:%M:%S")
                 update_schedule_run(sched["id"], now_str, next_run)
                 triggered += 1
 
@@ -1790,7 +1789,7 @@ def create_review_schedule(body: ScheduleIn):
     from datetime import timedelta
 
     freq_days = {"daily": 1, "weekly": 7, "monthly": 30}.get(body.frequency, 7)
-    next_run  = (datetime.utcnow() + timedelta(days=freq_days)).strftime("%Y-%m-%d %H:%M:%S")
+    next_run  = (datetime.now(UTC) + timedelta(days=freq_days)).strftime("%Y-%m-%d %H:%M:%S")
     return save_schedule(
         shortname=body.shortname,
         agent_id=body.agent_id,
@@ -1802,6 +1801,11 @@ def create_review_schedule(body: ScheduleIn):
         next_run_at=next_run,
         version_id=body.version_id,
     )
+
+
+@router.delete("/schedules")
+def clear_review_schedules():
+    return {"deleted": clear_schedules()}
 
 
 @router.delete("/schedules/{schedule_id}")

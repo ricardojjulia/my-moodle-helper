@@ -1,6 +1,6 @@
-# Moodle Course Creator
+# My Moodle Helper
 
-> AI-powered course authoring studio — generate complete, classroom-ready Moodle 5.x course backups (`.mbz`) from a single text prompt using any OpenAI-compatible LLM.
+> AI-powered Moodle course operations and authoring platform for theological schools, seminaries, and admin teams.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -9,161 +9,150 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Moodle](https://img.shields.io/badge/Moodle-5.x-F98012?logo=moodle&logoColor=white)](https://moodle.org/)
 
----
+My Moodle Helper combines course generation, library management, quality review, curriculum analytics, Moodle administration, and deployment into a single full-stack workspace. It can generate complete Moodle `.mbz` backups from a prompt, import existing courses, audit academic quality with LLMs, and support admin-first operational workflows such as user, enrollment, and security oversight.
 
-## What is this?
+The platform is built for teams that want local-LLM flexibility, versioned course assets, and practical Moodle administration without custom Moodle plugins or CLI access.
 
-**Moodle Course Creator** is a full-stack web application that turns a plain-text description of a course into a complete, importable Moodle backup file (`.mbz`) — including module lectures, a glossary, discussion questions, a syllabus, a 30–50 question quiz bank, and optional homework activities.
+## Why This Exists
 
-Designed for theological colleges, seminaries, and any institution that needs to produce structured, standards-compliant Moodle courses at scale. The entire generation pipeline runs against a locally-hosted LLM (LM Studio, Ollama) or any cloud provider with an OpenAI-compatible API (OpenAI, OpenRouter, Anthropic). No Moodle CLI access or special hosting is required.
+Most Moodle tooling is split across separate systems: authoring, QA, deployment, reporting, and site administration. My Moodle Helper brings those workflows together so an academic or operations team can:
 
----
+- generate or import structured courses quickly,
+- review and improve them with AI-assisted workflows,
+- deploy them to Moodle safely,
+- monitor curriculum coverage across the library,
+- run scheduled re-reviews over time,
+- and manage sensitive admin actions with audit visibility.
 
-## Features
+## Core Capabilities
 
-### AI Course Generation
+### Course Authoring
 
-- **Full pipeline in one click** — course structure → modules → syllabus → quiz bank → optional homework
-- **Configurable module count** — choose 3–12 modules per course
-- **Multi-language generation** — Spanish, English, Portuguese, French, German
-- **Any LLM, any provider** — LM Studio, Ollama, OpenAI, OpenRouter, Anthropic — provider auto-detected from URL
-- **Model evaluation** — benchmarks every locally-available model on a test prompt, scores and ranks them by accuracy, speed, and JSON validity
-- **Homework configurator** — per-module toggle to add Assignment or Forum activities with LLM-written prompts
-- **First-run wizard** — guided setup on first launch if no LLM URL is configured
+- End-to-end LLM course generation: structure, modules, syllabus, quiz bank, and optional homework.
+- Multi-language generation for Spanish, English, Portuguese, French, and German.
+- Per-module regeneration with custom instructions.
+- HTML and Word export for offline review and print workflows.
+- Moodle `.mbz` build pipeline for portable course delivery.
 
-### Course Library
+### Library And Review Operations
 
-- **Version history** — every generation saved as a numbered snapshot; fork, compare, or roll back at any time
-- **In-browser Course Viewer** — browse module content, glossary, quiz questions, discussion prompts, syllabus
-- **Inline editing** — edit any lecture, forum question, glossary entry, or syllabus field directly in the browser
-- **Per-module regeneration** — rewrite a single module with custom instructions without touching the rest
-- **Fork** — duplicate any version as a safe starting point before making changes
-- **Build & download** — compile any version to a valid `.mbz` on demand
-- **Import from `.mbz`** — upload or import-from-URL any Moodle backup file into your library
-- **HTML export** — export any version to a print-ready HTML page
-- **Word export** — download any version as a formatted `.docx` file
+- Versioned course library with fork, compare, and rollback-style workflows.
+- Autonomous review against configurable expert agents.
+- Review-driven regeneration for modules, quizzes, and syllabus updates.
+- Scheduled reviews with overdue execution and persistent review history.
+- Curriculum mapping with AI-scored domain coverage across the library.
 
-### Quality Assurance
+### Moodle Administration
 
-- **Autonomous Review** — bulk LLM audit of entire course categories against two configurable expert agents
-  - **Course Reviewer** — academic auditor checking theology, structure, quiz count, and syllabus completeness
-  - **Student Critic** — stress-tests content for depth, modern relevance, and the "So What?" factor
-- **Apply feedback & regenerate** — one click rewrites every module, quiz, and syllabus using the reviewers' findings
-- **Review history & Progress Report** — every review is stored; a per-course progress report shows score trends over time and which items improved or regressed across agents
-- **Bible Reference Validator** — scans all text fields for Scripture citations, validates book names (English + Spanish), checks chapter ranges, and flags invalid or missing references
-- **Quiz Bank editor** — reorder questions with ↑/↓ arrows, import/export the bank as JSON, add/edit/delete individual questions
+- Multi-instance Moodle connection management.
+- Live deploy to Moodle with deployment history.
+- Moodle catalog browsing, analytics, and import.
+- Admin user, enrollment, and role assignment operations.
+- Security diagnostics, audit trails, write-rate limiting, and retention controls.
 
-### Moodle Integration
+## Product Overview
 
-- **Multi-instance support** — save and switch between multiple Moodle sites (development, staging, production)
-- **Live deploy** — push a library version directly to Moodle as a new course, with section summaries and forum discussions seeded automatically
-- **Deploy history** — each deployment is recorded with timestamp, section/forum counts, and a direct link to the live course
-- **Instance Course Catalog** — browse live courses, expand section contents and activities, view grade books
-- **Batch import** — select multiple live Moodle courses and import them all into your library in one operation
-- **REST API proxy** — update course metadata, section summaries, and forum discussions without leaving the app
-- **Student Analytics** — per-course enrollment stats, grade distribution (A/B/C/D/F), pass rate, and per-quiz performance; weak-area detection
+```mermaid
+flowchart LR
+    A[Academic or Admin Team] --> B[My Moodle Helper UI]
+    B --> C[Course Studio]
+    B --> D[Library and Review]
+    B --> E[Curriculum Map]
+    B --> F[Moodle Admin]
+    B --> G[Security and Settings]
 
-### Curriculum Map
+    C --> H[FastAPI Backend]
+    D --> H
+    E --> H
+    F --> H
+    G --> H
 
-- **AI-scored domain coverage** — each course is evaluated by the best available LLM and scored 0–100 against eight theological domains: Old Testament, New Testament, Systematic Theology, Church History, Pastoral Ministry, Biblical Languages, Ethics, Missions & Evangelism
-- **Bilingual evaluation** — the AI recognises equivalent terms in both English and Spanish
-- **Bulk evaluation** — select any combination of courses (or "Select pending") and evaluate them all in one run, with a live progress bar and per-row score updates as each finishes
-- **Persistent scores** — evaluations are stored in SQLite; re-evaluation is on demand from the Library or Curriculum Map
-- **Auto-eval on import** — any course added via generation, `.mbz` upload, or URL import is automatically queued for background evaluation
-- **Coverage ring** — summary ring shows what percentage of the eight domains are addressed across the library, with per-domain average scores
+    H --> I[SQLite Library Database]
+    H --> J[LLM Provider API]
+    H --> K[Moodle REST API]
+```
 
-### Scheduled Reviews
+More diagrams are available in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-- **Auto-review scheduler** — configure courses for automatic periodic re-review (daily / weekly / monthly)
-- **Background scheduler** — APScheduler checks for overdue reviews every 15 minutes while the server is running
-- **Overdue indicator** — Settings tab shows how many scheduled reviews are past-due
-- **Run on demand** — trigger all overdue reviews with one click; results appear in each course's review history
+## Key Workflows
 
-### Security
+### 1. Generate A New Course
 
-- **Bearer token authentication** — optional API-level protection; all endpoints require a valid `Authorization: Bearer <token>` header when enabled
-- **Token management** — generate a secure random token or set a custom one in Settings; disable auth by clearing the token
-- **Login modal** — the frontend prompts for the token on first load if auth is enabled; the token is stored in `sessionStorage`
-- **Transparent pass-through** — auth is completely optional; if no token is configured, all requests proceed without a header check
-- **Write capability diagnostics** — Security panel validates whether required Moodle webservice functions are available for user/enrollment write workflows
-- **Admin audit trail** — user/enrollment write operations are recorded in SQLite and surfaced in Settings for operational traceability
-- **Security operating modes** — documented Single-admin and Team-admin modes with recommended controls in [docs/HOWTO.md](docs/HOWTO.md#9-moodle-integration)
-- **Write-rate limiting** — sensitive admin write routes are throttled to reduce accidental/abusive bulk operations
-- **Audit retention policy** — configurable retention and prune endpoints for long-running operational hygiene
+```mermaid
+flowchart TD
+    A[Course prompt and metadata] --> B[Select model and language]
+    B --> C[Generate course structure]
+    C --> D[Generate module content]
+    D --> E[Generate syllabus]
+    E --> F[Generate quiz bank and homework]
+    F --> G[Save version in library]
+    G --> H[Optional review, export, and deploy]
+```
 
-### Site Analytics & Settings
+### 2. Review And Improve Existing Content
 
-- **Instance dashboard** — site-wide stats (courses, categories, active users, auth methods, library coverage)
-- **LLM evaluation cache** — model benchmark results are cached and can be refreshed on demand
-- **Multi-provider presets** — select local, OpenAI, OpenRouter, or Anthropic with one click
+```mermaid
+flowchart TD
+    A[Stored course version] --> B[Run reviewer agents]
+    B --> C[Persist review results]
+    C --> D[Select findings]
+    D --> E[Regenerate targeted content]
+    E --> F[Finalize quiz and syllabus]
+    F --> G[Save improved version]
+```
 
----
+### 3. Continuous Quality Operations
+
+```mermaid
+flowchart TD
+    A[Course with saved version] --> B[Default review schedule seeded]
+    B --> C[Background scheduler checks overdue work]
+    C --> D[LLM review execution]
+    D --> E[Review history updated]
+    E --> F[Operators run remediation or follow-up review]
+```
 
 ## Tech Stack
 
-| Layer | Technology | Version |
-| ----- | ---------- | ------- |
-| Frontend framework | React | 18 |
-| UI component library | Mantine | 7 |
-| Icon set | Tabler Icons React | 3 |
-| Build tool | Vite | 6 |
-| Language (frontend) | TypeScript | 5.6 |
-| API framework | FastAPI | 0.115 |
-| Language (backend) | Python | 3.11+ |
-| Database | SQLite (built-in) | no install; single-writer; scales to ~5,000 courses |
-| LLM client | OpenAI-compatible REST | any |
-| Course output format | Moodle `.mbz` (ZIP) | Moodle 5.x |
-| Local Moodle (optional) | Docker + Bitnami Moodle | 5.x |
+| Layer | Technology | Notes |
+| ----- | ---------- | ----- |
+| Frontend | React 18 + Mantine 7 + Vite 6 | TypeScript SPA for admin and authoring workflows |
+| Backend | FastAPI + Pydantic | REST API, orchestration, auth middleware |
+| Database | SQLite | Single-file operational store for library, reviews, deploys, audits, and schedules |
+| AI | OpenAI-compatible APIs | Works with LM Studio, Ollama, OpenAI, OpenRouter, Anthropic-compatible endpoints |
+| Moodle Integration | Moodle REST webservices | Deploy, catalog, analytics, user, enrollment, and admin actions |
+| Packaging | Moodle `.mbz` backup output | Portable course import format for Moodle 5.x |
 
----
+## Repository Structure
 
-## Architecture
+```mermaid
+flowchart TD
+    ROOT[Repository Root]
+    ROOT --> APP[app/]
+    ROOT --> DOCS[docs/]
+    ROOT --> TESTS[tests/]
+    ROOT --> CC[create_course.py]
+    ROOT --> START[start.sh]
+    ROOT --> REQS[requirements.txt]
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Browser  (React + Mantine)                           │
-│                                                                              │
-│  Library  │  Course Studio  │  Moodle Catalog  │  Curriculum Map            │
-│           │                 │                  │                            │
-│  Autonomous Review          │  Settings         │                            │
-└──────────────────────────────────┬──────────────────────────────────────────┘
-                                   │  HTTP /api/…
-┌──────────────────────────────────▼──────────────────────────────────────────┐
-│                            FastAPI  (Python 3.11+)                           │
-│                                                                              │
-│  /api/courses  ·  /api/llm  ·  /api/moodle  ·  /api/settings                │
-│                                                                              │
-│                          SQLite  library.db                                  │
-│  courses · versions · reviews · schedules · deploys · curriculum_evals · settings  │
-└────────┬──────────────────────────────────────────────┬─────────────────────┘
-         │                                              │
-         ▼                                              ▼
-  create_course.py                              Moodle REST API
-  ┌─────────────────────┐                    (webservice/rest.php)
-  │  LLM pipeline       │
-  │  ─────────────────  │
-  │  1. Structure       │
-  │  2. Content × 5     │
-  │  3. Syllabus        │
-  │  4. Quiz            │
-  │  5. Homework        │
-  │  ─────────────────  │
-  │  .mbz builder       │
-  └────────┬────────────┘
-           │
-           ▼
-   OpenAI-compatible
-      LLM server
-  (LM Studio / Ollama /
-   OpenAI / OpenRouter /
-   Anthropic)
+    APP --> BACKEND[backend/]
+    APP --> FRONTEND[frontend/]
+    APP --> BUILDS[builds/]
+
+    BACKEND --> ROUTERS[routers/]
+    BACKEND --> DB[database.py]
+    BACKEND --> MAIN[main.py]
+
+    FRONTEND --> SRC[src/]
+    SRC --> PAGES[pages/]
+    SRC --> API[api/client.ts]
+    SRC --> I18N[i18n/]
+    SRC --> COMPONENTS[components/]
 ```
-
----
 
 ## Quick Start
 
-Full step-by-step instructions are in [docs/HOWTO.md](docs/HOWTO.md).
+Full operational guidance lives in [docs/HOWTO.md](docs/HOWTO.md).
 
 ### Prerequisites
 
@@ -171,168 +160,68 @@ Full step-by-step instructions are in [docs/HOWTO.md](docs/HOWTO.md).
 | ----------- | ------- | ----- |
 | Python | 3.11 | 3.12+ recommended |
 | Node.js | 20 LTS | includes npm |
-| LLM server | — | LM Studio ≥ 0.3, Ollama, or a cloud API key |
-| Moodle | 5.x | for `.mbz` import or live sync (optional) |
-| SQLite | built-in | part of Python's standard library — no separate install; `app/library.db` is created automatically on first run |
-
-> **`apscheduler` is optional.** If it is not installed the app starts normally; scheduled reviews run on-demand only (no background daemon).
+| LLM server | optional but recommended | LM Studio, Ollama, or any OpenAI-compatible API |
+| Moodle | 5.x | required for live deployment and admin operations |
+| SQLite | built in | app database is created automatically |
 
 ### Install
 
 ```bash
-git clone https://github.com/your-org/moodle-course-creator.git
-cd moodle-course-creator
+git clone https://github.com/ricardojjulia/my-moodle-helper.git
+cd my-moodle-helper
 
-# Python environment
 python3 -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
 
-# Frontend
-cd app/frontend
 npm install
-cd ../..
 ```
 
-### Run
+### Run In Development
 
 ```bash
-# Development — hot reload on both ends
 source .venv/bin/activate
-uvicorn app.backend.main:app --reload --port 4100 &   # API on :4100
-cd app/frontend && npm run dev                         # UI  on :4101
-# open http://localhost:4101
+uvicorn app.backend.main:app --reload --port 4100
+```
 
-# Production — frontend served by FastAPI
-cd app/frontend && npm run build && cd ../..
+In a second terminal:
+
+```bash
+npm run dev
+```
+
+Open `http://localhost:4101`.
+
+### Run In Production Mode
+
+```bash
+npm run build
+source .venv/bin/activate
 uvicorn app.backend.main:app --host 0.0.0.0 --port 4100
-# open http://localhost:4100
 ```
 
-### Optional: local Moodle via Docker
+Open `http://localhost:4100`.
 
-```bash
-docker compose up -d
-# Moodle 5.x available at http://localhost:4103
-```
+## Documentation Map
 
----
-
-## Project Structure
-
-```text
-.
-├── create_course.py          # Core LLM pipeline + .mbz builder
-├── requirements.txt          # Python dependencies
-├── docker-compose.yml        # Local Moodle 5.x + MariaDB
-├── start.sh                  # Convenience startup script
-├── LICENSE
-├── CHANGELOG.md
-│
-├── app/
-│   ├── backend/
-│   │   ├── main.py           # FastAPI app + static file serving
-│   │   ├── database.py       # SQLite schema and all DB helpers
-│   │   └── routers/
-│   │       ├── courses.py    # Library CRUD, generate, build, review,
-│   │       │                 # regenerate, curriculum, schedules
-│   │       ├── llm.py        # Model list, evaluation cache
-│   │       ├── moodle.py     # Moodle REST proxy, deploy, analytics
-│   │       └── settings.py   # App settings, Moodle instance management
-│   │
-│   ├── frontend/
-│   │   ├── index.html
-│   │   ├── vite.config.ts
-│   │   └── src/
-│   │       ├── App.tsx                       # Tab routing
-│   │       ├── api/client.ts                 # Fully typed API client
-│   │       ├── components/
-│   │       │   ├── CourseViewer.tsx          # Course content browser + editor
-│   │       │   └── VersionDiff.tsx           # Side-by-side version diff
-│   │       └── pages/
-│   │           ├── NewCourse.tsx             # Course Studio
-│   │           ├── Library.tsx               # Course library + progress report
-│   │           ├── AutonomousReview.tsx      # Bulk AI review
-│   │           ├── MoodleCourses.tsx         # Live Moodle browser + analytics
-│   │           ├── Curriculum.tsx            # Theological domain coverage map
-│   │           └── Settings.tsx              # App config + scheduled reviews
-│   │
-│   └── builds/               # Generated .mbz files (git-ignored)
-│
-└── docs/
-    ├── HOWTO.md              # Full installation and usage guide
-    └── MVP_ASSESSMENT.md     # Feature audit and readiness assessment
-```
-
----
-
-## API Reference
-
-Interactive docs at `http://localhost:4100/docs` when running.
-
-| Group | Endpoint | Description |
-| ----- | -------- | ----------- |
-| **Library** | `GET /api/courses` | List all courses |
-| | `POST /api/courses/generate` | Run full LLM generation pipeline |
-| | `GET /api/courses/{sn}/versions` | List versions for a course |
-| | `POST /api/courses/{sn}/versions/{vid}/build` | Compile version to `.mbz` |
-| | `GET /api/courses/{sn}/versions/{vid}/download` | Download `.mbz` file |
-| | `POST /api/courses/{sn}/versions/{vid}/fork` | Duplicate a version |
-| | `PATCH /api/courses/{sn}/versions/{vid}/field` | Inline field edit |
-| | `POST /api/courses/{sn}/versions/{vid}/modules/{n}/regenerate` | Regenerate one module |
-| | `GET /api/courses/{sn}/versions/{vid}/export-html` | Print-ready HTML export |
-| | `GET /api/courses/{sn}/versions/{vid}/export-docx` | Word (.docx) export |
-| | `GET /api/courses/{sn}/versions/{vid}/bible-refs` | Validate Bible references |
-| | `PUT /api/courses/{sn}/versions/{vid}/quiz` | Save quiz question bank |
-| **Review** | `POST /api/courses/{sn}/review` | Single-course LLM audit |
-| | `GET /api/courses/{sn}/reviews` | List all stored reviews |
-| | `POST /api/courses/{sn}/regenerate-from-review` | Full rewrite from review findings |
-| | `POST /api/courses/{sn}/versions/{vid}/finalize-review` | Regenerate quiz + syllabus |
-| | `GET /api/courses/reviews/recent` | Recent reviews across all courses |
-| **Schedules** | `GET /api/courses/schedules` | List scheduled reviews |
-| | `POST /api/courses/schedules` | Create a new schedule |
-| | `DELETE /api/courses/schedules/{id}` | Delete a schedule |
-| | `POST /api/courses/schedules/run-overdue` | Run all past-due scheduled reviews |
-| **Curriculum** | `GET /api/courses/curriculum` | AI-scored theological domain coverage map |
-| | `POST /api/courses/{sn}/curriculum-eval` | Run AI evaluation for one course |
-| **LLM** | `GET /api/llm/models` | List available models |
-| | `GET /api/llm/evaluation` | Get cached evaluation results |
-| | `POST /api/llm/evaluate` | Run model evaluation benchmark |
-| **Moodle** | `GET /api/moodle/courses` | List live Moodle courses |
-| | `GET /api/moodle/courses/{id}/contents` | Course section structure |
-| | `GET /api/moodle/courses/{id}/grades` | Grade book |
-| | `GET /api/moodle/courses/{id}/analytics` | Enrollment + grade + quiz analytics |
-| | `POST /api/moodle/deploy` | Deploy library version to Moodle |
-| | `GET /api/moodle/deploys` | Deploy history for a version |
-| | `GET /api/moodle/stats` | Site-wide statistics |
-| **Settings** | `GET /api/settings` | Get current settings |
-| | `PUT /api/settings` | Update LLM / general settings |
-| | `GET /api/settings/instances` | List saved Moodle instances |
-| | `POST /api/settings/instances` | Add or update a Moodle instance |
-| | `POST /api/settings/instances/{name}/activate` | Set active Moodle instance |
-| **Auth** | `GET /api/auth/status` | Whether token auth is enabled |
-| | `POST /api/auth/token` | Set a custom auth token |
-| | `POST /api/auth/token/generate` | Generate a secure random token |
-| | `DELETE /api/auth/token` | Disable authentication |
-| | `GET /api/auth/verify` | Verify caller's token is valid |
-
----
-
-## Contributing
-
-Pull requests are welcome. The `main` branch is protected — all changes must go through a PR.
-
-```bash
-git checkout -b feat/your-feature
-# make changes and commit
-git push origin feat/your-feature
-# open a Pull Request
-```
-
-Please keep PRs focused and include a clear description of what changes and why. For significant new features, open an issue first to discuss the approach.
-
----
+- [docs/HOWTO.md](docs/HOWTO.md): installation, configuration, Moodle token setup, operational usage.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): system structure, component boundaries, and workflow diagrams.
+- [CHANGELOG.md](CHANGELOG.md): release history and current unreleased work.
 
 ## License
 
-[MIT](LICENSE) © 2026 Ricardo Julia
+This repository is publicly licensed under the [MIT License](LICENSE). You can use, modify, and distribute the software under the terms in that file.
+
+## Current Status
+
+My Moodle Helper is already usable as a practical internal tool for course generation, review, and Moodle admin operations. The current codebase includes:
+
+- admin-first navigation and operational screens,
+- curriculum mapping and scheduled review automation,
+- contract and security tests around high-risk endpoints,
+- CI checks for backend and frontend,
+- and documented security operating modes for single-admin and team-admin deployments.
+
+## Contributing
+
+Pull requests are welcome. Keep changes focused, include clear rationale, and prefer tests for behavior changes.

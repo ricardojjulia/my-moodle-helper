@@ -1,14 +1,17 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, type ElementType } from 'react'
 import {
-  AppShell, Tabs, Title, Group, Text, Loader, Badge, Box,
+  AppShell, Title, Group, Text, Loader, Badge, Box,
   Modal, PasswordInput, Button, Stack, Alert, TextInput, Stepper, Anchor,
-  SegmentedControl,
+  SegmentedControl, NavLink, Select, Burger, Divider,
 } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
 import {
   IconBooks, IconWand, IconCloud, IconSettings, IconShieldCheck, IconMap2, IconLock,
-  IconCheck, IconPlugConnected, IconRocket,
+  IconCheck, IconPlugConnected, IconRocket, IconLayoutDashboard, IconUsers,
+  IconUserPlus, IconBook2, IconChartBar, IconClock, IconTool, IconRefresh,
 } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
+import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import i18n from './i18n/config'
 import LibraryPage          from './pages/Library'
 import NewCoursePage        from './pages/NewCourse'
@@ -17,13 +20,68 @@ import CanvasPage           from './pages/CanvasCourses'
 import SettingsPage         from './pages/Settings'
 import AutonomousReviewPage from './pages/AutonomousReview'
 import CurriculumPage       from './pages/Curriculum'
-import { api, tokenStore }  from './api/client'
+import AdminOverviewPage    from './pages/AdminOverview'
+import AdminAnalyticsPage   from './pages/AdminAnalytics'
+import AdminAutomationPage  from './pages/AdminAutomation'
+import AdminUsersPage       from './pages/AdminUsers'
+import AdminEnrollmentPage  from './pages/AdminEnrollment'
+import { api, tokenStore, type MoodleInstance }  from './api/client'
 
-type Tab = 'library' | 'new' | 'moodle' | 'canvas' | 'curriculum' | 'review' | 'settings'
+type NavStatus = 'live' | 'partial' | 'planned'
+
+type NavItem = {
+  to: string
+  label: string
+  icon: ElementType
+  status?: NavStatus
+  match?: (pathname: string) => boolean
+}
+
+function PlaceholderPage({
+  title,
+  description,
+  status,
+}: {
+  title: string
+  description: string
+  status: NavStatus
+}) {
+  return (
+    <Stack gap="md">
+      <Group justify="space-between" align="flex-start">
+        <div>
+          <Title order={2}>{title}</Title>
+          <Text c="dimmed" mt={6}>{description}</Text>
+        </div>
+        <StatusBadge status={status} />
+      </Group>
+      <Alert color={status === 'planned' ? 'gray' : 'yellow'}>
+        This workspace is scaffolded in Slice 1 so routing and navigation are stable. The functional UI for this area lands in the next execution slices.
+      </Alert>
+    </Stack>
+  )
+}
+
+function StatusBadge({ status }: { status: NavStatus }) {
+  if (status === 'live') return <Badge color="green">Live</Badge>
+  if (status === 'partial') return <Badge color="yellow">Partial</Badge>
+  return <Badge color="gray">Planned</Badge>
+}
+
+function inferEnvironment(instanceName: string) {
+  const normalized = instanceName.trim().toLowerCase()
+  if (!normalized) return 'Custom'
+  if (normalized.includes('prod')) return 'Prod'
+  if (normalized.includes('stag')) return 'Staging'
+  if (normalized.includes('dev') || normalized.includes('local') || normalized.includes('test')) return 'Dev'
+  return 'Custom'
+}
 
 export default function App() {
   const { t } = useTranslation()
-  const [tab, setTab]               = useState<Tab>('library')
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [navOpened, { toggle: toggleNav, close: closeNav }] = useDisclosure(false)
   const [generating, setGenerating] = useState(false)
   const [genLabel, setGenLabel]     = useState<string>('')
   const [jumpCourse, setJumpCourse] = useState<string | null>(null)
@@ -39,6 +97,9 @@ export default function App() {
   const [wizardTesting, setWizardTesting] = useState(false)
   const [wizardError, setWizardError]   = useState('')
   const [wizardOk,    setWizardOk]    = useState(false)
+  const [instances, setInstances] = useState<MoodleInstance[]>([])
+  const [activeInstance, setActiveInstance] = useState('')
+  const [switchingInstance, setSwitchingInstance] = useState(false)
 
   // On mount: check if auth is enabled and our stored token is valid
   useEffect(() => {
@@ -59,6 +120,24 @@ export default function App() {
       if (!s.llm_url) setWizardOpen(true)
     }).catch(() => {})
   }, [])
+
+  const refreshInstances = useCallback(async () => {
+    try {
+      const [settings, list] = await Promise.all([
+        api.settings.get(),
+        api.settings.listInstances(),
+      ])
+      setActiveInstance(settings.active_instance || '')
+      setInstances(list)
+    } catch {
+      setInstances([])
+      setActiveInstance('')
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshInstances()
+  }, [refreshInstances])
 
   const wizardTestConnection = async () => {
     if (!wizardUrl.trim()) { setWizardError(t('app.wizard_url_required')); return }
@@ -113,10 +192,102 @@ export default function App() {
     else if (!v) setGenLabel('')
   }, [])
 
-  const handleCreated = useCallback(() => setTab('library'), [])
+  const handleCreated = useCallback(() => navigate('/studio/library'), [navigate])
+
+  const handleInstanceChange = useCallback(async (name: string | null) => {
+    if (!name || name === activeInstance) return
+    setSwitchingInstance(true)
+    try {
+      await api.settings.activateInstance(name)
+      await refreshInstances()
+      window.location.reload()
+    } finally {
+      setSwitchingInstance(false)
+    }
+  }, [activeInstance, refreshInstances])
+
+  const primaryNavItems: NavItem[] = [
+    {
+      to: '/admin/overview',
+      label: t('app.nav_overview'),
+      icon: IconLayoutDashboard,
+      status: 'live',
+    },
+    {
+      to: '/admin/users',
+      label: t('app.nav_users'),
+      icon: IconUsers,
+      status: 'live',
+    },
+    {
+      to: '/admin/enrollment',
+      label: t('app.nav_enrollment'),
+      icon: IconUserPlus,
+      status: 'live',
+    },
+    {
+      to: '/admin/courses',
+      label: t('app.nav_courses'),
+      icon: IconBook2,
+      status: 'live',
+      match: (pathname: string) => pathname === '/admin/courses' || pathname === '/admin/canvas',
+    },
+    {
+      to: '/admin/analytics',
+      label: t('app.nav_analytics'),
+      icon: IconChartBar,
+      status: 'live',
+    },
+    {
+      to: '/admin/automation',
+      label: t('app.nav_automation'),
+      icon: IconClock,
+      status: 'live',
+    },
+    {
+      to: '/admin/settings',
+      label: t('app.nav_settings'),
+      icon: IconSettings,
+      status: 'live',
+    },
+  ]
+
+  const studioNavItems: NavItem[] = [
+    {
+      to: '/studio/library',
+      label: t('app.tab_library'),
+      icon: IconBooks,
+      status: 'live',
+    },
+    {
+      to: '/studio/new',
+      label: t('app.tab_studio'),
+      icon: IconWand,
+      status: 'live',
+    },
+    {
+      to: '/studio/review',
+      label: t('app.tab_review'),
+      icon: IconShieldCheck,
+      status: 'live',
+    },
+    {
+      to: '/studio/curriculum',
+      label: t('app.tab_curriculum'),
+      icon: IconMap2,
+      status: 'live',
+    },
+  ]
+
+  const pathname = location.pathname
+  const isStudioNew = pathname === '/studio/new'
 
   return (
-    <AppShell header={{ height: 56 }} padding="md">
+    <AppShell
+      header={{ height: 56 }}
+      navbar={{ width: 300, breakpoint: 'sm', collapsed: { mobile: !navOpened } }}
+      padding="md"
+    >
       {/* ── First-run wizard ────────────────────────────────────────────────── */}
       <Modal
         opened={wizardOpen && !loginOpen}
@@ -165,7 +336,15 @@ export default function App() {
             </Group>
             <Text size="xs" c="dimmed">
               {t('app.wizard_cloud_provider')}{' '}
-              <Anchor size="xs" onClick={() => { setWizardOpen(false); }} href="#settings">
+              <Anchor
+                size="xs"
+                href="/admin/settings"
+                onClick={(event) => {
+                  event.preventDefault()
+                  setWizardOpen(false)
+                  navigate('/admin/settings')
+                }}
+              >
                 {t('app.wizard_cloud_settings')}
               </Anchor>
             </Text>
@@ -182,7 +361,7 @@ export default function App() {
             </Text>
             <Group>
               <Button
-                onClick={() => { setWizardOpen(false); setTab('new') }}
+                onClick={() => { setWizardOpen(false); navigate('/studio/new') }}
                 leftSection={<IconWand size={14} />}
               >
                 {t('app.wizard_open_studio')}
@@ -221,6 +400,7 @@ export default function App() {
       </Modal>
 
       <AppShell.Header px="md" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Burger opened={navOpened} onClick={toggleNav} hiddenFrom="sm" size="sm" />
         <Group gap="xs" style={{ flex: 1 }}>
           <IconBooks size={24} color="#1c7ed6" />
           <div>
@@ -228,6 +408,27 @@ export default function App() {
             <Text size="xs" c="dimmed" style={{ lineHeight: 1 }}>{t('app.subtitle')}</Text>
           </div>
         </Group>
+        <Select
+          size="xs"
+          w={180}
+          placeholder={t('app.instance_label')}
+          data={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
+          value={activeInstance || null}
+          onChange={handleInstanceChange}
+          disabled={switchingInstance || instances.length === 0}
+          searchable
+        />
+        <Badge variant="light" color="blue">
+          {inferEnvironment(activeInstance)}
+        </Badge>
+        <Button
+          size="xs"
+          variant="subtle"
+          leftSection={<IconRefresh size={14} />}
+          onClick={() => window.location.reload()}
+        >
+          {t('common.refresh')}
+        </Button>
         <SegmentedControl
           size="xs"
           value={i18n.language.startsWith('es') ? 'es' : 'en'}
@@ -236,55 +437,89 @@ export default function App() {
         />
       </AppShell.Header>
 
+      <AppShell.Navbar p="sm">
+        <Stack gap="xs">
+          <Text size="xs" fw={700} c="dimmed" tt="uppercase">{t('app.nav_admin')}</Text>
+          {primaryNavItems.map((item) => {
+            const Icon = item.icon
+            const active = item.match ? item.match(pathname) : pathname === item.to
+            return (
+              <NavLink
+                key={item.to}
+                component={Link}
+                to={item.to}
+                label={item.label}
+                leftSection={<Icon size={18} />}
+                rightSection={item.status ? <StatusBadge status={item.status} /> : null}
+                active={active}
+                onClick={() => closeNav()}
+              />
+            )
+          })}
+
+          <Divider my="xs" />
+          <Group gap="xs">
+            <IconTool size={16} />
+            <Text size="xs" fw={700} c="dimmed" tt="uppercase">{t('app.nav_workspace')}</Text>
+            {generating && (
+              <Badge size="xs" color="blue" variant="filled">
+                {genLabel || t('common.generating')}
+              </Badge>
+            )}
+          </Group>
+          {studioNavItems.map((item) => {
+            const Icon = item.icon
+            return (
+              <NavLink
+                key={item.to}
+                component={Link}
+                to={item.to}
+                label={item.label}
+                leftSection={<Icon size={18} />}
+                rightSection={item.status ? <StatusBadge status={item.status} /> : null}
+                active={pathname === item.to}
+                onClick={() => closeNav()}
+              />
+            )
+          })}
+        </Stack>
+      </AppShell.Navbar>
+
       <AppShell.Main>
-        <Tabs value={tab} onChange={v => setTab(v as Tab)} mb="md">
-          <Tabs.List>
-            <Tabs.Tab value="library"  leftSection={<IconBooks size={16} />}>
-              {t('app.tab_library')}
-            </Tabs.Tab>
-            <Tabs.Tab value="new" leftSection={generating ? <Loader size={14} /> : <IconWand size={16} />}>
-              <Group gap={6} wrap="nowrap">
-                {t('app.tab_studio')}
-                {generating && (
-                  <Badge size="xs" color="blue" variant="filled">
-                    {genLabel || t('common.generating')}
-                  </Badge>
-                )}
-              </Group>
-            </Tabs.Tab>
-            <Tabs.Tab value="moodle"     leftSection={<IconCloud size={16} />}>
-              {t('app.tab_moodle')}
-            </Tabs.Tab>
-            <Tabs.Tab value="canvas"     leftSection={<IconCloud size={16} />}>
-              Canvas
-            </Tabs.Tab>
-            <Tabs.Tab value="curriculum" leftSection={<IconMap2 size={16} />}>
-              {t('app.tab_curriculum')}
-            </Tabs.Tab>
-            <Tabs.Tab value="review"     leftSection={<IconShieldCheck size={16} />}>
-              {t('app.tab_review')}
-            </Tabs.Tab>
-            <Tabs.Tab value="settings" leftSection={<IconSettings size={16} />}>
-              {t('app.tab_settings')}
-            </Tabs.Tab>
-          </Tabs.List>
-        </Tabs>
+        {!isStudioNew && (
+          <Routes>
+            <Route path="/" element={<Navigate to="/admin/overview" replace />} />
+            <Route path="/library" element={<Navigate to="/studio/library" replace />} />
+            <Route path="/new" element={<Navigate to="/studio/new" replace />} />
+            <Route path="/moodle" element={<Navigate to="/admin/courses" replace />} />
+            <Route path="/review" element={<Navigate to="/studio/review" replace />} />
+            <Route path="/curriculum" element={<Navigate to="/studio/curriculum" replace />} />
+            <Route path="/settings" element={<Navigate to="/admin/settings" replace />} />
+            <Route path="/canvas" element={<Navigate to="/admin/canvas" replace />} />
 
-        {tab === 'library'  && <LibraryPage initialShortname={jumpCourse} onJumped={() => setJumpCourse(null)} />}
+            <Route path="/admin/overview" element={<AdminOverviewPage />} />
+            <Route path="/admin/users" element={<AdminUsersPage />} />
+            <Route path="/admin/enrollment" element={<AdminEnrollmentPage />} />
+            <Route path="/admin/courses" element={<MoodlePage />} />
+            <Route path="/admin/canvas" element={<CanvasPage />} />
+            <Route path="/admin/analytics" element={<AdminAnalyticsPage />} />
+            <Route path="/admin/automation" element={<AdminAutomationPage />} />
+            <Route path="/admin/settings" element={<SettingsPage />} />
 
-        {/* Always mounted so generation survives tab switches */}
-        <Box display={tab === 'new' ? 'block' : 'none'}>
+            <Route path="/studio/library" element={<LibraryPage initialShortname={jumpCourse} onJumped={() => setJumpCourse(null)} />} />
+            <Route path="/studio/review" element={<AutonomousReviewPage onLoadCourse={sn => { setJumpCourse(sn); navigate('/studio/library') }} />} />
+            <Route path="/studio/curriculum" element={<CurriculumPage />} />
+            <Route path="*" element={<Navigate to="/admin/overview" replace />} />
+          </Routes>
+        )}
+
+        {/* Always mounted so generation survives route switches */}
+        <Box style={{ display: isStudioNew ? 'block' : 'none' }}>
           <NewCoursePage
             onCreated={handleCreated}
             onGeneratingChange={handleGeneratingChange}
           />
         </Box>
-
-        {tab === 'moodle'      && <MoodlePage />}
-        {tab === 'canvas'      && <CanvasPage />}
-        {tab === 'curriculum'  && <CurriculumPage />}
-        {tab === 'review'      && <AutonomousReviewPage onLoadCourse={sn => { setJumpCourse(sn); setTab('library') }} />}
-        {tab === 'settings'    && <SettingsPage />}
       </AppShell.Main>
     </AppShell>
   )

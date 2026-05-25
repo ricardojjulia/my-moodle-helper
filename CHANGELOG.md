@@ -6,6 +6,36 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- Admin-first routing slices now shipped with real pages:
+  - `/admin/overview` (site health + quick actions)
+  - `/admin/analytics` (site/course performance workspace)
+  - `/admin/automation` (scheduled review operations)
+  - `/admin/users` (directory + lifecycle operations)
+  - `/admin/enrollment` (roster + role operations)
+- New Moodle admin endpoints for user and enrollment operations:
+  - `GET /api/moodle/users`
+  - `POST /api/moodle/users`
+  - `POST /api/moodle/users/{user_id}/suspend`
+  - `DELETE /api/moodle/users/{user_id}`
+  - `GET /api/moodle/courses/{course_id}/enrollment`
+  - `POST /api/moodle/courses/{course_id}/enrollments`
+  - `DELETE /api/moodle/courses/{course_id}/enrollments/{user_id}`
+  - `POST /api/moodle/courses/{course_id}/roles/assign`
+  - `POST /api/moodle/courses/{course_id}/roles/unassign`
+- Security diagnostics and auditability:
+  - `GET /api/moodle/write-capabilities` for wsfunction readiness checks
+  - `GET /api/settings/audit-logs` for recent admin write events
+  - New `admin_audit_logs` SQLite table with backend write-event recording hooks
+
+### Changed
+
+- Settings → Security now includes capability diagnostics and recent admin write audit history.
+- Enrollment and Users pages moved from read-only placeholders to guarded action workflows.
+
 ## [0.3.0] — 2026-05-08
 
 ### Added

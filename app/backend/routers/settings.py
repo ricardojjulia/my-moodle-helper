@@ -2,11 +2,14 @@
 
 import json
 import secrets
+import csv
+import io
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 
-from ..database import get_settings, set_setting
+from ..database import get_settings, set_setting, list_admin_audits
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -165,6 +168,14 @@ class TokenIn(BaseModel):
     token: str = ""
 
 
+class OperatorIn(BaseModel):
+    name: str = ""
+
+
+class AdminPolicyIn(BaseModel):
+    allowed_role_ids: str = ""
+
+
 @router.get("/auth/status")
 def auth_status():
     """Return whether a token is configured (never returns the token itself)."""
@@ -202,3 +213,112 @@ def clear_auth_token():
     """Remove the auth token, disabling authentication."""
     set_setting("auth_token", "")
     return {"ok": True, "enabled": False}
+
+
+@router.get("/auth/operator")
+def get_auth_operator():
+    return {"name": (get_settings().get("auth_operator_name", "") or "").strip()}
+
+
+@router.post("/auth/operator")
+def set_auth_operator(body: OperatorIn):
+    name = body.name.strip()[:120]
+    set_setting("auth_operator_name", name)
+    return {"ok": True, "name": name}
+
+
+@router.get("/audit-logs")
+def get_audit_logs(limit: int = 100, offset: int = 0,
+                   area: str = "", action: str = "", actor: str = "",
+                   status: str = "", q: str = ""):
+    """Return recent admin audit records with optional filters."""
+    safe_limit = max(1, min(limit, 500))
+    safe_offset = max(0, offset)
+    items, total = list_admin_audits(
+        limit=safe_limit,
+        offset=safe_offset,
+        area=area.strip(),
+        action=action.strip(),
+        actor=actor.strip(),
+        status=status.strip(),
+        query=q.strip(),
+    )
+    return {
+        "items": items,
+        "total": total,
+        "limit": safe_limit,
+        "offset": safe_offset,
+    }
+
+
+@router.get("/audit-logs/export")
+def export_audit_logs(limit: int = 500):
+    safe_limit = max(1, min(limit, 5000))
+    rows, _ = list_admin_audits(limit=safe_limit, offset=0)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["id", "created_at", "actor", "area", "action", "target_type", "target_id", "status", "detail_json"])
+    for row in rows:
+        writer.writerow([
+            row.get("id", ""),
+            row.get("created_at", ""),
+            row.get("actor", ""),
+            row.get("area", ""),
+            row.get("action", ""),
+            row.get("target_type", ""),
+            row.get("target_id", ""),
+            row.get("status", ""),
+            json.dumps(row.get("detail", {}), ensure_ascii=False),
+        ])
+
+    csv_data = output.getvalue()
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=admin-audit-{ts}.csv"},
+    )
+
+
+@router.get("/admin-policy")
+def get_admin_policy():
+    raw = (get_settings().get("admin_allowed_role_ids", "3,4,5") or "3,4,5").strip()
+    parsed = []
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            parsed.append(int(token))
+        except ValueError:
+            continue
+    if not parsed:
+        parsed = [3, 4, 5]
+    return {"allowed_role_ids": ",".join(str(v) for v in parsed), "parsed_role_ids": parsed}
+
+
+@router.post("/admin-policy")
+def set_admin_policy(body: AdminPolicyIn):
+    raw = (body.allowed_role_ids or "").strip()
+    if not raw:
+        raw = "3,4,5"
+
+    parsed = []
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if not token.isdigit():
+            raise HTTPException(400, f"Invalid role id '{token}'")
+        role_id = int(token)
+        if role_id <= 0:
+            raise HTTPException(400, f"Invalid role id '{token}'")
+        parsed.append(role_id)
+
+    if not parsed:
+        raise HTTPException(400, "At least one role id is required")
+
+    normalized = ",".join(str(v) for v in sorted(set(parsed)))
+    set_setting("admin_allowed_role_ids", normalized)
+    return {"ok": True, "allowed_role_ids": normalized, "parsed_role_ids": sorted(set(parsed))}

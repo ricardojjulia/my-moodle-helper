@@ -51,7 +51,7 @@ async def lifespan(app: FastAPI):
         _scheduler.shutdown(wait=False)
 
 
-app = FastAPI(title="Moodle Course Administrator API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="My Moodle Helper API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -74,6 +74,10 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     app_settings = get_settings()
+    configured_actor = (app_settings.get("auth_operator_name", "") or "").strip()
+    header_actor = (request.headers.get("X-Admin-Actor", "") or "").strip()[:120]
+    request.state.audit_actor = configured_actor or header_actor or "local-admin"
+
     token = app_settings.get("auth_token", "")
     if not token:
         # Auth disabled — let request through
@@ -81,6 +85,7 @@ async def auth_middleware(request: Request, call_next):
 
     auth_header = request.headers.get("Authorization", "")
     if auth_header == f"Bearer {token}":
+        request.state.audit_actor = configured_actor or "token-admin"
         return await call_next(request)
 
     return JSONResponse(status_code=401, content={"detail": "Unauthorized"})

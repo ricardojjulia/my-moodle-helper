@@ -1,13 +1,108 @@
 """Moodle REST API proxy — fetch courses, inspect structure, push updates."""
 
 import requests
+import re
 from datetime import datetime
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from ..database import get_settings, get_version, upsert_course, save_version, save_deploy, list_deploys
+from ..database import (
+    get_settings,
+    get_version,
+    upsert_course,
+    save_version,
+    save_deploy,
+    list_deploys,
+    save_admin_audit,
+)
 
 router = APIRouter(prefix="/moodle", tags=["moodle"])
+
+
+def _audit_admin_write(area: str, action: str, target_type: str,
+                       target_id: str, detail: dict, status: str = "ok"):
+    payload = dict(detail or {})
+    actor = str(payload.pop("_actor", "") or "")
+    try:
+        save_admin_audit(
+            area=area,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            detail=payload,
+            status=status,
+            actor=actor,
+        )
+    except Exception:
+        # Auditing must never break primary admin operations.
+        pass
+
+
+def _audit_admin_error(area: str, action: str, target_type: str, target_id: str,
+                       request: Request, detail: dict, exc: Exception):
+    if isinstance(exc, HTTPException):
+        error_message = str(exc.detail)
+        status_code = int(exc.status_code)
+    else:
+        error_message = str(exc)
+        status_code = 500
+    _audit_admin_write(
+        area=area,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        detail={
+            "_actor": getattr(request.state, "audit_actor", ""),
+            **(detail or {}),
+            "error": error_message,
+            "status_code": status_code,
+        },
+        status="error",
+    )
+
+
+def _site_functions() -> set[str]:
+    info = _moodle_call("core_webservice_get_site_info")
+    return {
+        f.get("name", "")
+        for f in info.get("functions", [])
+        if isinstance(f, dict)
+    }
+
+
+def _allowed_role_ids() -> set[int]:
+    raw = (get_settings().get("admin_allowed_role_ids", "") or "").strip()
+    if not raw:
+        return {5, 3, 4}
+    allowed = set()
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            allowed.add(int(token))
+        except ValueError:
+            continue
+    return allowed or {5, 3, 4}
+
+
+def _assert_role_allowed(role_id: int):
+    allowed = _allowed_role_ids()
+    if role_id not in allowed:
+        raise HTTPException(400, f"Role {role_id} is not allowed by policy. Allowed role IDs: {sorted(allowed)}")
+
+
+def _validate_password_policy(password: str):
+    if len(password) < 12:
+        raise HTTPException(400, "Password must be at least 12 characters")
+    if not re.search(r"[a-z]", password):
+        raise HTTPException(400, "Password must include a lowercase letter")
+    if not re.search(r"[A-Z]", password):
+        raise HTTPException(400, "Password must include an uppercase letter")
+    if not re.search(r"\d", password):
+        raise HTTPException(400, "Password must include a number")
+    if not re.search(r"[^A-Za-z0-9]", password):
+        raise HTTPException(400, "Password must include a special character")
 
 
 def _moodle_call(function: str, params: dict = None, settings: dict = None) -> dict | list:
@@ -415,6 +510,330 @@ def get_moodle_stats():
     return result
 
 
+@router.get("/courses/{course_id}/enrollment")
+def get_course_enrollment(course_id: int):
+    """Return a read-only course roster including role and activity signals."""
+    enrolled = _moodle_call("core_enrol_get_enrolled_users", {"courseid": course_id})
+    if not isinstance(enrolled, list):
+        enrolled = []
+
+    roster = []
+    for user in enrolled:
+        roles = user.get("roles", []) or []
+        role_details = []
+        role_names = []
+        for role in roles:
+            role_name = role.get("shortname") or role.get("name")
+            if not role_name:
+                continue
+            role_names.append(role_name)
+            role_id = role.get("roleid", role.get("id"))
+            if role_id is not None:
+                role_details.append({
+                    "id": int(role_id),
+                    "name": role.get("name", role_name),
+                    "shortname": role.get("shortname", role_name),
+                })
+        roster.append({
+            "id": user.get("id"),
+            "username": user.get("username", ""),
+            "fullname": user.get("fullname") or " ".join(filter(None, [user.get("firstname", ""), user.get("lastname", "")])).strip(),
+            "email": user.get("email", ""),
+            "suspended": bool(user.get("suspended", False)),
+            "lastaccess": int(user.get("lastaccess") or 0),
+            "roles": role_names,
+            "role_details": role_details,
+        })
+
+    roster.sort(key=lambda item: (item["fullname"].lower(), item["username"].lower()))
+    return {
+        "course_id": course_id,
+        "total": len(roster),
+        "users": roster,
+    }
+
+
+class EnrollmentActionIn(BaseModel):
+    user_id: int
+    role_id: int = 5
+
+
+class UserCreateIn(BaseModel):
+    username: str
+    firstname: str
+    lastname: str
+    email: str
+    password: str
+    auth: str = "manual"
+
+
+class UserSuspendIn(BaseModel):
+    suspended: bool
+
+
+def _get_course_context_id(course_id: int) -> int:
+    by_field = _moodle_call("core_course_get_courses_by_field", {
+        "field": "id",
+        "value": str(course_id),
+    })
+    courses = by_field.get("courses", []) if isinstance(by_field, dict) else []
+    if courses:
+        ctx = courses[0].get("contextid")
+        if ctx:
+            return int(ctx)
+    raise HTTPException(400, f"Could not resolve course context for course {course_id}")
+
+
+@router.post("/courses/{course_id}/enrollments")
+def enroll_user(course_id: int, body: EnrollmentActionIn, request: Request):
+    """Enroll a user in a course with a role."""
+    target_id = f"{course_id}:{body.user_id}"
+    detail = {
+        "course_id": course_id,
+        "user_id": body.user_id,
+        "role_id": body.role_id,
+    }
+    try:
+        _assert_role_allowed(body.role_id)
+        _moodle_call("enrol_manual_enrol_users", {
+            "enrolments[0][roleid]": body.role_id,
+            "enrolments[0][userid]": body.user_id,
+            "enrolments[0][courseid]": course_id,
+        })
+    except Exception as exc:
+        _audit_admin_error("enrollment", "enroll", "course_user", target_id, request, detail, exc)
+        raise
+    _audit_admin_write(
+        area="enrollment",
+        action="enroll",
+        target_type="course_user",
+        target_id=target_id,
+        detail={
+            "_actor": getattr(request.state, "audit_actor", ""),
+            **detail,
+        },
+    )
+    return {"ok": True}
+
+
+@router.delete("/courses/{course_id}/enrollments/{user_id}")
+def unenroll_user(course_id: int, user_id: int, request: Request):
+    """Unenroll a user from a course."""
+    target_id = f"{course_id}:{user_id}"
+    detail = {"course_id": course_id, "user_id": user_id}
+    try:
+        _moodle_call("enrol_manual_unenrol_users", {
+            "enrolments[0][userid]": user_id,
+            "enrolments[0][courseid]": course_id,
+        })
+    except Exception as exc:
+        _audit_admin_error("enrollment", "unenroll", "course_user", target_id, request, detail, exc)
+        raise
+    _audit_admin_write(
+        area="enrollment",
+        action="unenroll",
+        target_type="course_user",
+        target_id=target_id,
+        detail={"_actor": getattr(request.state, "audit_actor", ""), **detail},
+    )
+    return {"ok": True}
+
+
+@router.post("/courses/{course_id}/roles/assign")
+def assign_course_role(course_id: int, body: EnrollmentActionIn, request: Request):
+    """Assign an additional role in the course context."""
+    target_id = f"{course_id}:{body.user_id}:{body.role_id}"
+    detail = {
+        "course_id": course_id,
+        "user_id": body.user_id,
+        "role_id": body.role_id,
+    }
+    try:
+        _assert_role_allowed(body.role_id)
+        context_id = _get_course_context_id(course_id)
+        _moodle_call("core_role_assign_roles", {
+            "assignments[0][roleid]": body.role_id,
+            "assignments[0][userid]": body.user_id,
+            "assignments[0][contextid]": context_id,
+        })
+    except Exception as exc:
+        _audit_admin_error("enrollment", "assign_role", "course_user_role", target_id, request, detail, exc)
+        raise
+    _audit_admin_write(
+        area="enrollment",
+        action="assign_role",
+        target_type="course_user_role",
+        target_id=target_id,
+        detail={
+            "_actor": getattr(request.state, "audit_actor", ""),
+            **detail,
+        },
+    )
+    return {"ok": True}
+
+
+@router.post("/courses/{course_id}/roles/unassign")
+def unassign_course_role(course_id: int, body: EnrollmentActionIn, request: Request):
+    """Remove a role from the user in the course context."""
+    target_id = f"{course_id}:{body.user_id}:{body.role_id}"
+    detail = {
+        "course_id": course_id,
+        "user_id": body.user_id,
+        "role_id": body.role_id,
+    }
+    try:
+        _assert_role_allowed(body.role_id)
+        context_id = _get_course_context_id(course_id)
+        _moodle_call("core_role_unassign_roles", {
+            "unassignments[0][roleid]": body.role_id,
+            "unassignments[0][userid]": body.user_id,
+            "unassignments[0][contextid]": context_id,
+        })
+    except Exception as exc:
+        _audit_admin_error("enrollment", "unassign_role", "course_user_role", target_id, request, detail, exc)
+        raise
+    _audit_admin_write(
+        area="enrollment",
+        action="unassign_role",
+        target_type="course_user_role",
+        target_id=target_id,
+        detail={
+            "_actor": getattr(request.state, "audit_actor", ""),
+            **detail,
+        },
+    )
+    return {"ok": True}
+
+
+@router.get("/users")
+def get_moodle_users():
+    """Return a read-only Moodle user directory for admin workflows."""
+    data = _moodle_call("core_user_get_users", {
+        "criteria[0][key]": "email",
+        "criteria[0][value]": "%",
+    })
+    raw = data.get("users", data) if isinstance(data, dict) else data
+
+    users = []
+    for user in raw:
+        if user.get("username") in ("guest",) or user.get("deleted", False):
+            continue
+        users.append({
+            "id": user.get("id"),
+            "username": user.get("username", ""),
+            "fullname": user.get("fullname") or " ".join(filter(None, [user.get("firstname", ""), user.get("lastname", "")])).strip(),
+            "firstname": user.get("firstname", ""),
+            "lastname": user.get("lastname", ""),
+            "email": user.get("email", ""),
+            "auth": user.get("auth", "manual"),
+            "suspended": bool(user.get("suspended", False)),
+            "confirmed": bool(user.get("confirmed", True)),
+            "lastaccess": int(user.get("lastaccess") or 0),
+            "city": user.get("city", ""),
+            "country": user.get("country", ""),
+        })
+
+    users.sort(key=lambda item: (
+        item["lastname"].lower(),
+        item["firstname"].lower(),
+        item["username"].lower(),
+    ))
+    return users
+
+
+@router.post("/users")
+def create_moodle_user(body: UserCreateIn, request: Request):
+    """Create a Moodle user account."""
+    target_id = body.username
+    detail = {
+        "username": body.username,
+        "email": body.email,
+        "auth": body.auth,
+    }
+    try:
+        _validate_password_policy(body.password)
+        if "@" not in body.email or "." not in body.email.split("@")[-1]:
+            raise HTTPException(400, "Email format appears invalid")
+        data = _moodle_call("core_user_create_users", {
+            "users[0][username]": body.username,
+            "users[0][firstname]": body.firstname,
+            "users[0][lastname]": body.lastname,
+            "users[0][email]": body.email,
+            "users[0][password]": body.password,
+            "users[0][auth]": body.auth,
+        })
+    except Exception as exc:
+        _audit_admin_error("users", "create", "user", target_id, request, detail, exc)
+        raise
+    created = data[0] if isinstance(data, list) and data else {}
+    created_id = created.get("id")
+    detail["id"] = created_id
+    _audit_admin_write(
+        area="users",
+        action="create",
+        target_type="user",
+        target_id=str(created_id or body.username),
+        detail={
+            "_actor": getattr(request.state, "audit_actor", ""),
+            **detail,
+        },
+    )
+    return {
+        "ok": True,
+        "id": created_id,
+        "username": body.username,
+    }
+
+
+@router.post("/users/{user_id}/suspend")
+def suspend_moodle_user(user_id: int, body: UserSuspendIn, request: Request):
+    """Suspend or unsuspend a Moodle user account."""
+    action = "suspend" if body.suspended else "unsuspend"
+    target_id = str(user_id)
+    detail = {
+        "user_id": user_id,
+        "suspended": body.suspended,
+    }
+    try:
+        _moodle_call("core_user_update_users", {
+            "users[0][id]": user_id,
+            "users[0][suspended]": 1 if body.suspended else 0,
+        })
+    except Exception as exc:
+        _audit_admin_error("users", action, "user", target_id, request, detail, exc)
+        raise
+    _audit_admin_write(
+        area="users",
+        action=action,
+        target_type="user",
+        target_id=target_id,
+        detail={"_actor": getattr(request.state, "audit_actor", ""), **detail},
+    )
+    return {"ok": True}
+
+
+@router.delete("/users/{user_id}")
+def delete_moodle_user(user_id: int, request: Request):
+    """Delete a Moodle user account."""
+    target_id = str(user_id)
+    detail = {"user_id": user_id}
+    try:
+        _moodle_call("core_user_delete_users", {
+            "userids[0]": user_id,
+        })
+    except Exception as exc:
+        _audit_admin_error("users", "delete", "user", target_id, request, detail, exc)
+        raise
+    _audit_admin_write(
+        area="users",
+        action="delete",
+        target_type="user",
+        target_id=target_id,
+        detail={"_actor": getattr(request.state, "audit_actor", ""), **detail},
+    )
+    return {"ok": True}
+
+
 # ── Grade report ─────────────────────────────────────────────────────────────
 
 @router.get("/courses/{course_id}/grades")
@@ -747,3 +1166,33 @@ def get_capabilities():
         {"modname": "section","can_push": True,
          "note": "Section summary updatable via core_course_edit_section"},
     ]
+
+
+@router.get("/write-capabilities")
+def get_write_capabilities():
+    """Return readiness diagnostics for admin write workflows."""
+    required = {
+        "users.create": ["core_user_create_users"],
+        "users.suspend": ["core_user_update_users"],
+        "users.delete": ["core_user_delete_users"],
+        "enrollment.enroll": ["enrol_manual_enrol_users"],
+        "enrollment.unenroll": ["enrol_manual_unenrol_users"],
+        "enrollment.assign_role": ["core_role_assign_roles", "core_course_get_courses_by_field"],
+        "enrollment.unassign_role": ["core_role_unassign_roles", "core_course_get_courses_by_field"],
+    }
+    available = _site_functions()
+
+    checks = []
+    for key, needed in required.items():
+        missing = [fn for fn in needed if fn not in available]
+        checks.append({
+            "key": key,
+            "ok": len(missing) == 0,
+            "required": needed,
+            "missing": missing,
+        })
+
+    return {
+        "ok": all(c["ok"] for c in checks),
+        "checks": checks,
+    }

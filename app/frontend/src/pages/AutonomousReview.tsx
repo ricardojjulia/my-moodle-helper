@@ -86,6 +86,11 @@ interface ReviewRun extends CourseReviewResult {
   agent_color: string
 }
 
+interface FixFinding {
+  id: string
+  line: string
+}
+
 interface ProgressStep {
   id:     string
   label:  string
@@ -151,14 +156,12 @@ function StepList({ steps }: { steps: ProgressStep[] }) {
 // ── Build improvement instructions from review results ────────────────────────
 
 function buildInstructions(courseResults: ReviewRun[]): string {
-  const failing = courseResults
-    .filter(r => !r.error)
-    .flatMap(r => (r.sections ?? []).flatMap(s =>
-      s.items
-        .filter(i => i.status === 'Needs Revision' || i.status === 'Missing')
-        .map(i => `[${r.agent_label} · ${s.title}] ${i.label}: ${i.note}`)
-    ))
+  const failing = collectFindings(courseResults).map(f => f.line)
   if (!failing.length) return ''
+  return buildInstructionsFromLines(failing)
+}
+
+function buildInstructionsFromLines(failing: string[]): string {
   return (
     'Apply ALL of the following improvements identified by expert reviewers:\n\n'
     + failing.map(f => `- ${f}`).join('\n')
@@ -167,6 +170,22 @@ function buildInstructions(courseResults: ReviewRun[]): string {
     + 'Where content Needs Revision, rewrite it to meet the standard described. '
     + 'Maintain the existing course structure and module titles.'
   )
+}
+
+function collectFindings(courseResults: ReviewRun[]): FixFinding[] {
+  return courseResults
+    .filter(r => !r.error)
+    .flatMap(r => (r.sections ?? []).flatMap(s =>
+      s.items
+        .filter(i => i.status === 'Needs Revision' || i.status === 'Missing')
+        .map(i => {
+          const line = `[${r.agent_label} · ${s.title}] ${i.label}: ${i.note}`
+          return {
+            id: `${r.agent_label}::${s.title}::${i.label}::${i.note}`,
+            line,
+          }
+        })
+    ))
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -389,6 +408,7 @@ export default function AutonomousReviewPage({ onLoadCourse }: { onLoadCourse?: 
   const [regenerating,     setRegenerating]     = useState<Record<string, boolean>>({})
   const [regenSteps,       setRegenSteps]       = useState<Record<string, ProgressStep[]>>({})
   const [regenDone,        setRegenDone]        = useState<Record<string, CourseVersion>>({})
+  const [selectedFindings, setSelectedFindings] = useState<Record<string, string[]>>({})
   const [history,          setHistory]          = useState<PersistedReview[]>([])
   const [historyOpen,      setHistoryOpen]      = useState(false)
 
@@ -464,11 +484,21 @@ export default function AutonomousReviewPage({ onLoadCourse }: { onLoadCourse?: 
       [sn]: (prev[sn] ?? []).map(s => s.id === id ? { ...s, status } : s),
     }))
 
-  const applyFeedback = async (shortname: string, courseResults: ReviewRun[]) => {
+  const applyFeedback = async (shortname: string, courseResults: ReviewRun[], onlyIds?: string[]) => {
     const validResults = courseResults.filter(r => !r.error && r.sections?.length)
     if (!validResults.length) return
 
-    const instructions = buildInstructions(validResults)
+    const allFindings = collectFindings(validResults)
+    const targetLines = onlyIds?.length
+      ? allFindings.filter(f => onlyIds.includes(f.id)).map(f => f.line)
+      : allFindings.map(f => f.line)
+
+    if (onlyIds && targetLines.length === 0) {
+      notifications.show({ title: t('rev.notif_pick_findings'), message: t('rev.notif_pick_findings_msg'), color: 'orange' })
+      return
+    }
+
+    const instructions = targetLines.length ? buildInstructionsFromLines(targetLines) : buildInstructions(validResults)
     if (!instructions) {
       notifications.show({ title: t('rev.notif_nothing'), message: t('rev.notif_all_passed'), color: 'green' })
       return
@@ -521,6 +551,7 @@ export default function AutonomousReviewPage({ onLoadCourse }: { onLoadCourse?: 
       setRegenStep(shortname, 'finalize', 'done')
 
       setRegenDone(prev => ({ ...prev, [shortname]: finalVer }))
+      setSelectedFindings(prev => ({ ...prev, [shortname]: [] }))
       notifications.show({
         title:   t('rev.notif_regen_done'),
         message: t('rev.notif_regen_msg', { shortname, n: finalVer.version_num }),
@@ -812,6 +843,10 @@ export default function AutonomousReviewPage({ onLoadCourse }: { onLoadCourse?: 
               const isRegenerating = regenerating[sn]
               const doneVer        = regenDone[sn]
               const agentLabels    = [...new Set(courseResults.map(r => r.agent_label))]
+              const findings       = collectFindings(courseResults)
+              const findingOptions = findings.map(f => ({ value: f.id, label: f.line }))
+              const selectedIds    = selectedFindings[sn] ?? []
+              const hasSelected    = selectedIds.length > 0
 
               return (
                 <Box key={sn}>
@@ -842,20 +877,49 @@ export default function AutonomousReviewPage({ onLoadCourse }: { onLoadCourse?: 
                             {t('rev.regenerated', { n: doneVer.version_num })}
                           </Badge>
                         ) : (
-                          <Button
-                            size="xs"
-                            variant="gradient"
-                            gradient={{ from: 'violet', to: 'teal', deg: 135 }}
-                            leftSection={isRegenerating ? <Loader size={10} color="white" /> : <IconWand size={13} />}
-                            disabled={!hasValidResult || isRegenerating}
-                            loading={isRegenerating}
-                            onClick={() => applyFeedback(sn, courseResults)}
-                          >
-                            {isRegenerating ? t('rev.regenerating') : t('rev.apply_feedback')}
-                          </Button>
+                          <Group gap="xs">
+                            <Button
+                              size="xs"
+                              variant="light"
+                              color="violet"
+                              leftSection={isRegenerating ? <Loader size={10} /> : <IconWand size={13} />}
+                              disabled={!hasValidResult || isRegenerating || !hasSelected}
+                              loading={isRegenerating}
+                              onClick={() => applyFeedback(sn, courseResults, selectedIds)}
+                            >
+                              {isRegenerating ? t('rev.regenerating') : t('rev.execute_selected')}
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="gradient"
+                              gradient={{ from: 'violet', to: 'teal', deg: 135 }}
+                              leftSection={isRegenerating ? <Loader size={10} color="white" /> : <IconWand size={13} />}
+                              disabled={!hasValidResult || isRegenerating}
+                              loading={isRegenerating}
+                              onClick={() => applyFeedback(sn, courseResults)}
+                            >
+                              {isRegenerating ? t('rev.regenerating') : t('rev.execute_all')}
+                            </Button>
+                          </Group>
                         )}
                       </Group>
                     </Group>
+
+                    {!doneVer && findings.length > 0 && (
+                      <Box mt="sm">
+                        <Text size="xs" c="dimmed" mb={4}>{t('rev.findings_pick')}</Text>
+                        <MultiSelect
+                          data={findingOptions}
+                          value={selectedIds}
+                          onChange={vals => setSelectedFindings(prev => ({ ...prev, [sn]: vals }))}
+                          placeholder={t('rev.findings_pick_ph', { count: findings.length })}
+                          searchable
+                          clearable
+                          size="xs"
+                          maxDropdownHeight={220}
+                        />
+                      </Box>
+                    )}
 
                     {regenSteps[sn]?.length > 0 && (
                       <Box mt="sm">

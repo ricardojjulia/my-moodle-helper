@@ -118,6 +118,18 @@ def init_db():
             reasoning    TEXT    NOT NULL DEFAULT '',
             evaluated_at TEXT    NOT NULL DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS admin_audit_logs (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            area         TEXT    NOT NULL,
+            action       TEXT    NOT NULL,
+            actor        TEXT    NOT NULL DEFAULT '',
+            target_type  TEXT    NOT NULL,
+            target_id    TEXT    NOT NULL DEFAULT '',
+            detail_json  TEXT    NOT NULL DEFAULT '{}',
+            status       TEXT    NOT NULL DEFAULT 'ok',
+            created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
         """)
 
     # Migrations for existing databases
@@ -154,6 +166,13 @@ def init_db():
              "version_id INTEGER, model_used TEXT NOT NULL DEFAULT '', "
              "scores_json TEXT NOT NULL DEFAULT '{}', reasoning TEXT NOT NULL DEFAULT '', "
              "evaluated_at TEXT NOT NULL DEFAULT (datetime('now')))"),
+            ("CREATE TABLE IF NOT EXISTS admin_audit_logs ("
+             "id INTEGER PRIMARY KEY AUTOINCREMENT, area TEXT NOT NULL, "
+             "action TEXT NOT NULL, actor TEXT NOT NULL DEFAULT '', target_type TEXT NOT NULL, "
+             "target_id TEXT NOT NULL DEFAULT '', detail_json TEXT NOT NULL DEFAULT '{}', "
+             "status TEXT NOT NULL DEFAULT 'ok', "
+             "created_at TEXT NOT NULL DEFAULT (datetime('now')))"),
+            "ALTER TABLE admin_audit_logs ADD COLUMN actor TEXT NOT NULL DEFAULT ''",
         ]:
             try:
                 conn.execute(stmt)
@@ -170,6 +189,8 @@ def _seed_settings():
         "llm_url":      "http://192.168.86.41:1234/v1",
         "llm_api_key":  "",
         "last_model":   "",
+        "auth_operator_name": "",
+        "admin_allowed_role_ids": "3,4,5",
     }
     with db() as conn:
         for key, value in defaults.items():
@@ -496,3 +517,69 @@ def list_curriculum_evals() -> list[dict]:
         r["scores"] = json.loads(r.get("scores_json", "{}"))
         result.append(r)
     return result
+
+
+# ── Admin audit logs ─────────────────────────────────────────────────────────
+
+def save_admin_audit(area: str, action: str, target_type: str,
+                     target_id: str = "", detail: dict | None = None,
+                            status: str = "ok", actor: str = "") -> dict:
+    with db() as conn:
+        cur = conn.execute(
+            """INSERT INTO admin_audit_logs
+                    (area, action, actor, target_type, target_id, detail_json, status)
+                    VALUES (?,?,?,?,?,?,?)""",
+                (area, action, actor, target_type, target_id,
+                 json.dumps(detail or {}, ensure_ascii=False), status),
+        )
+        row = conn.execute(
+            "SELECT * FROM admin_audit_logs WHERE id=?", (cur.lastrowid,)
+        ).fetchone()
+    record = dict(row)
+    record["detail"] = json.loads(record.pop("detail_json", "{}"))
+    return record
+
+
+def list_admin_audits(limit: int = 100, offset: int = 0,
+                      area: str = "", action: str = "", actor: str = "",
+                      status: str = "", query: str = "") -> tuple[list[dict], int]:
+    where = []
+    params: list = []
+
+    if area:
+        where.append("area = ?")
+        params.append(area)
+    if action:
+        where.append("action = ?")
+        params.append(action)
+    if actor:
+        where.append("actor LIKE ?")
+        params.append(f"%{actor}%")
+    if status:
+        where.append("status = ?")
+        params.append(status)
+    if query:
+        where.append("(target_id LIKE ? OR target_type LIKE ? OR detail_json LIKE ?)")
+        q = f"%{query}%"
+        params.extend([q, q, q])
+
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+
+    with db() as conn:
+        total = conn.execute(
+            f"SELECT COUNT(*) AS c FROM admin_audit_logs {where_sql}",
+            tuple(params),
+        ).fetchone()["c"]
+
+        rows = conn.execute(
+            f"SELECT * FROM admin_audit_logs {where_sql} "
+            "ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            tuple(params + [limit, offset]),
+        ).fetchall()
+
+    result = []
+    for row in rows:
+        record = dict(row)
+        record["detail"] = json.loads(record.pop("detail_json", "{}"))
+        result.append(record)
+    return result, int(total)

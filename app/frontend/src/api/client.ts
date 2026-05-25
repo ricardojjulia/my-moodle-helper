@@ -30,6 +30,20 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   return res.json()
 }
 
+async function reqText(method: string, path: string): Promise<string> {
+  const token = tokenStore.get()
+  const headers: Record<string, string> = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(`${BASE}${path}`, { method, headers })
+  if (res.status === 401) throw Object.assign(new Error('Unauthorized'), { status: 401 })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail ?? res.statusText)
+  }
+  return res.text()
+}
+
 const get    = <T>(path: string)                => req<T>('GET',    path)
 const post   = <T>(path: string, body?: unknown) => req<T>('POST',   path, body)
 const put    = <T>(path: string, body?: unknown) => req<T>('PUT',    path, body)
@@ -130,6 +144,78 @@ export interface MoodleStats {
   courses_error?: string
   categories_error?: string
   users_error?: string
+}
+
+export interface MoodleUser {
+  id: number
+  username: string
+  fullname: string
+  firstname: string
+  lastname: string
+  email: string
+  auth: string
+  suspended: boolean
+  confirmed: boolean
+  lastaccess: number
+  city: string
+  country: string
+}
+
+export interface MoodleEnrollmentUser {
+  id: number
+  username: string
+  fullname: string
+  email: string
+  suspended: boolean
+  lastaccess: number
+  roles: string[]
+  role_details: Array<{
+    id: number
+    name: string
+    shortname: string
+  }>
+}
+
+export interface MoodleEnrollmentRoster {
+  course_id: number
+  total: number
+  users: MoodleEnrollmentUser[]
+}
+
+export interface MoodleWriteCapabilityCheck {
+  key: string
+  ok: boolean
+  required: string[]
+  missing: string[]
+}
+
+export interface MoodleWriteCapabilities {
+  ok: boolean
+  checks: MoodleWriteCapabilityCheck[]
+}
+
+export interface AdminAuditLog {
+  id: number
+  area: string
+  action: string
+  actor: string
+  target_type: string
+  target_id: string
+  detail: Record<string, unknown>
+  status: string
+  created_at: string
+}
+
+export interface AdminAuditLogPage {
+  items: AdminAuditLog[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface AdminPolicy {
+  allowed_role_ids: string
+  parsed_role_ids: number[]
 }
 
 export interface GradeColumn {
@@ -382,6 +468,21 @@ export const api = {
                         post<{ ok: boolean; updated: boolean }>('/settings/instances', b),
     activateInstance: (name: string)        => post<{ ok: boolean }>(`/settings/instances/${encodeURIComponent(name)}/activate`),
     deleteInstance:   (name: string)        => del<{ ok: boolean }>(`/settings/instances/${encodeURIComponent(name)}`),
+    auditLogs:        (opts?: { limit?: number; offset?: number; area?: string; action?: string; actor?: string; status?: string; q?: string }) => {
+                        const params = new URLSearchParams()
+                        if (opts?.limit != null) params.set('limit', String(opts.limit))
+                        if (opts?.offset != null) params.set('offset', String(opts.offset))
+                        if (opts?.area) params.set('area', opts.area)
+                        if (opts?.action) params.set('action', opts.action)
+                        if (opts?.actor) params.set('actor', opts.actor)
+                        if (opts?.status) params.set('status', opts.status)
+                        if (opts?.q) params.set('q', opts.q)
+                        const query = params.toString()
+                        return get<AdminAuditLogPage>(`/settings/audit-logs${query ? `?${query}` : ''}`)
+                      },
+    exportAuditLogs:  (limit = 500)         => reqText('GET', `/settings/audit-logs/export?limit=${limit}`),
+    getAdminPolicy:   ()                     => get<AdminPolicy>('/settings/admin-policy'),
+    setAdminPolicy:   (allowed_role_ids: string) => post<AdminPolicy & { ok: boolean }>('/settings/admin-policy', { allowed_role_ids }),
   },
 
   auth: {
@@ -390,6 +491,8 @@ export const api = {
     setToken:  (token: string) => post<{ ok: boolean; enabled: boolean }>('/settings/auth/token', { token }),
     generate:  ()              => post<{ ok: boolean; token: string; enabled: boolean }>('/settings/auth/token/generate', {}),
     clear:     ()              => del<{ ok: boolean; enabled: boolean }>('/settings/auth/token'),
+    getOperator: ()            => get<{ name: string }>('/settings/auth/operator'),
+    setOperator: (name: string) => post<{ ok: boolean; name: string }>('/settings/auth/operator', { name }),
   },
 
   // ── Library ────────────────────────────────────────────────────────────────
@@ -485,6 +588,12 @@ export const api = {
   moodle: {
     ping:          ()              => get<{ ok: boolean; site_name: string; moodle_version: string; fullname: string }>('/moodle/ping'),
     stats:         ()              => get<MoodleStats>('/moodle/stats'),
+    writeCapabilities: ()          => get<MoodleWriteCapabilities>('/moodle/write-capabilities'),
+    users:         ()              => get<MoodleUser[]>('/moodle/users'),
+    createUser:    (body: { username: string; firstname: string; lastname: string; email: string; password: string; auth?: string }) =>
+             post<{ ok: boolean; id?: number; username: string }>('/moodle/users', body),
+    suspendUser:   (userId: number, suspended: boolean) => post<{ ok: boolean }>(`/moodle/users/${userId}/suspend`, { suspended }),
+    deleteUser:    (userId: number) => del<{ ok: boolean }>(`/moodle/users/${userId}`),
     categories:    ()              => get<{ id: number; name: string }[]>('/moodle/categories'),
     courses:       ()              => get<MoodleCourse[]>('/moodle/courses'),
     contents:      (id: number)    => get<MoodleSection[]>(`/moodle/courses/${id}/contents`),
@@ -492,6 +601,11 @@ export const api = {
     updateSection: (body: unknown) => post('/moodle/sections/summary', body),
     addDiscussion: (body: unknown) => post('/moodle/forum/discussion', body),
     grades:        (id: number)    => get<GradeReport>(`/moodle/courses/${id}/grades`),
+    enrollment:    (id: number)    => get<MoodleEnrollmentRoster>(`/moodle/courses/${id}/enrollment`),
+    enrollUser:    (courseId: number, body: { user_id: number; role_id: number }) => post<{ ok: boolean }>(`/moodle/courses/${courseId}/enrollments`, body),
+    unenrollUser:  (courseId: number, userId: number) => del<{ ok: boolean }>(`/moodle/courses/${courseId}/enrollments/${userId}`),
+    assignRole:    (courseId: number, body: { user_id: number; role_id: number }) => post<{ ok: boolean }>(`/moodle/courses/${courseId}/roles/assign`, body),
+    unassignRole:  (courseId: number, body: { user_id: number; role_id: number }) => post<{ ok: boolean }>(`/moodle/courses/${courseId}/roles/unassign`, body),
     capabilities:  ()              => get<{ modname: string; can_push: boolean; note: string }[]>('/moodle/capabilities'),
     deploys:       (version_id: number) => get<MoodleDeploy[]>(`/moodle/deploys?version_id=${version_id}`),
     analytics:     (id: number) => get<CourseAnalytics>(`/moodle/courses/${id}/analytics`),

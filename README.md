@@ -85,6 +85,8 @@ Designed for theological colleges, seminaries, and any institution that needs to
 - **Token management** — generate a secure random token or set a custom one in Settings; disable auth by clearing the token
 - **Login modal** — the frontend prompts for the token on first load if auth is enabled; the token is stored in `sessionStorage`
 - **Transparent pass-through** — auth is completely optional; if no token is configured, all requests proceed without a header check
+- **Write capability diagnostics** — Security panel validates whether required Moodle webservice functions are available for user/enrollment write workflows
+- **Admin audit trail** — user/enrollment write operations are recorded in SQLite and surfaced in Settings for operational traceability
 
 ### Site Analytics & Settings
 

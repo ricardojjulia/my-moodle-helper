@@ -3,7 +3,7 @@ import {
   Stack, TextInput, PasswordInput, Button, Group,
   Title, Text, Alert, Badge, Paper, Loader,
   ActionIcon, Tooltip, ThemeIcon, SimpleGrid, Progress,
-  Box, Divider, Select, Collapse, CopyButton, Code,
+  Box, Divider, Select, Collapse, CopyButton, Code, Table,
 } from '@mantine/core'
 import { useForm } from '@mantine/form'
 import { notifications } from '@mantine/notifications'
@@ -15,9 +15,20 @@ import {
   IconApi, IconRefresh, IconSchool, IconRobot,
   IconBrain, IconServer, IconExternalLink,
   IconClock, IconCalendarEvent, IconLock, IconLockOpen, IconCopy,
+  IconDownload,
 } from '@tabler/icons-react'
-import { api, type AppSettings, type MoodleInstance, type MoodleStats, type ReviewSchedule, tokenStore } from '../api/client'
+import {
+  api,
+  type AdminAuditLog,
+  type AdminPolicy,
+  type AppSettings,
+  type MoodleInstance,
+  type MoodleWriteCapabilities,
+  type ReviewSchedule,
+  tokenStore,
+} from '../api/client'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router-dom'
 
 // ── LLM provider presets ──────────────────────────────────────────────────────
 
@@ -33,215 +44,6 @@ const PROVIDER_MODELS: Record<string, string[]> = {
   openai:     ['gpt-4o', 'gpt-4o-mini', 'o3-mini', 'gpt-4-turbo'],
   openrouter: ['anthropic/claude-opus-4-7', 'anthropic/claude-sonnet-4-6', 'openai/gpt-4o', 'google/gemini-2.5-pro', 'meta-llama/llama-3.3-70b-instruct'],
   anthropic:  ['claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
-}
-
-// ── Stat card ─────────────────────────────────────────────────────────────────
-
-function StatCard({ label, value, color = 'blue', icon }: {
-  label: string
-  value: number | string | undefined | null
-  color?: string
-  icon: React.ReactNode
-}) {
-  return (
-    <Paper withBorder p="sm" radius="md" ta="center">
-      <ThemeIcon size="lg" radius="md" color={color} variant="light" mx="auto" mb={6}>
-        {icon}
-      </ThemeIcon>
-      <Text fw={700} size="xl" c={color} lh={1}>
-        {value ?? '—'}
-      </Text>
-      <Text size="xs" c="dimmed" mt={4} lh={1.2}>{label}</Text>
-    </Paper>
-  )
-}
-
-// ── Site overview panel ───────────────────────────────────────────────────────
-
-function SiteOverview({ stats, loading }: { stats: MoodleStats | null; loading: boolean }) {
-  const { t } = useTranslation()
-  if (loading) {
-    return (
-      <Paper withBorder p="md" radius="md">
-        <Group gap="sm">
-          <Loader size="sm" />
-          <Text size="sm" fw={500}>{t('cfg.loading_metrics')}</Text>
-        </Group>
-      </Paper>
-    )
-  }
-
-  if (!stats) return null
-
-  const maxCourses = Math.max(...Object.values(stats.courses_per_category ?? {}), 1)
-
-  return (
-    <Paper withBorder p="md" radius="md">
-
-      {/* Header */}
-      <Group justify="space-between" mb="sm" wrap="nowrap">
-        <div>
-          <Group gap="xs">
-            <ThemeIcon size="sm" color="blue" variant="light"><IconCloud size={12} /></ThemeIcon>
-            <Title order={5}>{stats.site_name || 'Site Overview'}</Title>
-            {stats.current_user_is_admin && (
-              <Badge size="xs" color="red" leftSection={<IconShield size={9} />}>Admin</Badge>
-            )}
-            {stats.mobile_service_enabled && (
-              <Badge size="xs" color="teal" leftSection={<IconDeviceMobile size={9} />}>Mobile</Badge>
-            )}
-          </Group>
-          <Text size="xs" c="dimmed" mt={2}>
-            {stats.release}
-            {stats.current_user_fullname ? ` · ${t('cfg.connected_as', { name: stats.current_user_fullname })}` : ''}
-            {stats.api_functions_count ? ` · ${t('cfg.api_functions_count', { count: stats.api_functions_count })}` : ''}
-          </Text>
-        </div>
-      </Group>
-
-      <Divider mb="sm" />
-
-      {/* Row 1 — Course & Category stats */}
-      <Text size="xs" fw={600} c="dimmed" mb={6} tt="uppercase">{t('cfg.courses_section')}</Text>
-      <SimpleGrid cols={4} spacing="xs" mb="md">
-        <StatCard
-          label={t('cfg.total_courses')}
-          value={stats.total_courses}
-          color="blue"
-          icon={<IconBook size={16} />}
-        />
-        <StatCard
-          label={t('cfg.visible')}
-          value={stats.visible_courses}
-          color="green"
-          icon={<IconBook size={16} />}
-        />
-        <StatCard
-          label={t('cfg.hidden')}
-          value={stats.hidden_courses}
-          color="orange"
-          icon={<IconEyeOff size={16} />}
-        />
-        <StatCard
-          label={t('cfg.categories')}
-          value={stats.total_categories}
-          color="teal"
-          icon={<IconCategory size={16} />}
-        />
-      </SimpleGrid>
-
-      {/* Row 2 — User stats */}
-      <Text size="xs" fw={600} c="dimmed" mb={6} tt="uppercase">{t('cfg.users_section')}</Text>
-      <SimpleGrid cols={4} spacing="xs" mb="md">
-        <StatCard
-          label={t('cfg.total_users')}
-          value={stats.total_users}
-          color="blue"
-          icon={<IconUsers size={16} />}
-        />
-        <StatCard
-          label={t('cfg.active_30')}
-          value={stats.active_30d}
-          color="green"
-          icon={<IconUserCheck size={16} />}
-        />
-        <StatCard
-          label={t('cfg.suspended')}
-          value={stats.suspended_users}
-          color="orange"
-          icon={<IconUserX size={16} />}
-        />
-        <StatCard
-          label={t('cfg.never_logged')}
-          value={stats.never_logged_in}
-          color="red"
-          icon={<IconUserOff size={16} />}
-        />
-      </SimpleGrid>
-
-      {/* Row 3 — Misc */}
-      <SimpleGrid cols={4} spacing="xs" mb="md">
-        <StatCard
-          label={t('cfg.currently_active')}
-          value={stats.active_courses ?? '—'}
-          color="violet"
-          icon={<IconSchool size={16} />}
-        />
-        <StatCard
-          label={t('cfg.mobile_service')}
-          value={stats.mobile_service_enabled ? t('cfg.enabled') : t('cfg.disabled')}
-          color={stats.mobile_service_enabled ? 'teal' : 'gray'}
-          icon={<IconDeviceMobile size={16} />}
-        />
-        <StatCard
-          label={t('cfg.api_functions')}
-          value={stats.api_functions_count}
-          color="grape"
-          icon={<IconApi size={16} />}
-        />
-        <StatCard
-          label={t('cfg.activity_rate')}
-          value={stats.total_users
-            ? `${Math.round(((stats.active_30d ?? 0) / stats.total_users) * 100)}%`
-            : '—'}
-          color="cyan"
-          icon={<IconUserCheck size={16} />}
-        />
-      </SimpleGrid>
-
-      {/* Courses per category */}
-      {stats.courses_per_category && Object.keys(stats.courses_per_category).length > 0 && (
-        <>
-          <Divider mb="sm" />
-          <Text size="xs" fw={600} c="dimmed" mb={8} tt="uppercase">{t('cfg.courses_per_cat')}</Text>
-          <Stack gap={6}>
-            {Object.entries(stats.courses_per_category).map(([cat, count]) => (
-              <div key={cat}>
-                <Group justify="space-between" mb={2}>
-                  <Text size="xs" lineClamp={1} style={{ flex: 1 }}>{cat}</Text>
-                  <Badge size="xs" variant="outline" color="blue">{count}</Badge>
-                </Group>
-                <Progress
-                  value={(count / maxCourses) * 100}
-                  size="sm"
-                  color="blue"
-                  radius="xl"
-                />
-              </div>
-            ))}
-          </Stack>
-        </>
-      )}
-
-      {/* Auth methods */}
-      {stats.auth_methods && Object.keys(stats.auth_methods).length > 0 && (
-        <>
-          <Divider mt="sm" mb="sm" />
-          <Text size="xs" fw={600} c="dimmed" mb={6} tt="uppercase">{t('cfg.auth_methods')}</Text>
-          <Group gap={6} wrap="wrap">
-            {Object.entries(stats.auth_methods).map(([method, count]) => (
-              <Badge key={method} size="sm" variant="light" color="gray">
-                {method}: {count}
-              </Badge>
-            ))}
-          </Group>
-        </>
-      )}
-
-      {/* Partial error notices */}
-      {(stats.site_error || stats.courses_error || stats.categories_error || stats.users_error) && (
-        <>
-          <Divider mt="sm" mb="xs" />
-          <Text size="xs" c="dimmed">
-            {t('cfg.metrics_unavail')}{' '}
-            {[stats.site_error, stats.courses_error, stats.categories_error, stats.users_error]
-              .filter(Boolean)
-              .join(' · ')}
-          </Text>
-        </>
-      )}
-    </Paper>
-  )
 }
 
 // ── Scheduled reviews section ─────────────────────────────────────────────────
@@ -563,6 +365,7 @@ function CanvasSettingsPanel() {
 
 export default function SettingsPage() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [loading, setLoading]       = useState(true)
   const [testing, setTesting]       = useState(false)
   const [savingInst, setSavingInst] = useState(false)
@@ -572,9 +375,6 @@ export default function SettingsPage() {
   const [pingResult, setPing]       = useState<{
     ok: boolean; msg: string; siteName?: string
   } | null>(null)
-  const [stats, setStats]           = useState<MoodleStats | null>(null)
-  const [loadingStats, setLoadingStats] = useState(false)
-
   const [llmProvider, setLlmProvider]   = useState<string>('local')
   const [llmApiKey,   setLlmApiKey]     = useState('')
   const [llmKeyMask,  setLlmKeyMask]    = useState('')
@@ -584,18 +384,6 @@ export default function SettingsPage() {
   const form = useForm({
     initialValues: { moodle_url: '', moodle_token: '', llm_url: '' },
   })
-
-  const loadStats = async () => {
-    setLoadingStats(true)
-    try {
-      const s = await api.moodle.stats()
-      setStats(s)
-    } catch {
-      setStats(null)
-    } finally {
-      setLoadingStats(false)
-    }
-  }
 
   const loadAll = async () => {
     const [s, insts] = await Promise.all([
@@ -613,7 +401,6 @@ export default function SettingsPage() {
     else setLlmProvider('custom')
     setInstances(insts)
     setLoading(false)
-    if (s.active_instance || s.moodle_url) loadStats()
   }
 
   useEffect(() => { loadAll() }, [])
@@ -634,7 +421,6 @@ export default function SettingsPage() {
         msg: `Connected as ${res.fullname} · ${res.moodle_version}`,
         siteName: res.site_name,
       })
-      loadStats()
     } catch (e: any) {
       setPing({ ok: false, msg: e.message })
     } finally {
@@ -680,7 +466,6 @@ export default function SettingsPage() {
       setInstances(insts)
       setPing(null)
       notifications.show({ title: t('common.activated'), message: t('cfg.notif_activated_msg', { name }), color: 'blue' })
-      loadStats()
     } catch (e: any) {
       notifications.show({ title: 'Error', message: e.message, color: 'red' })
     } finally {
@@ -694,8 +479,6 @@ export default function SettingsPage() {
     try {
       await api.settings.deleteInstance(name)
       setInstances(prev => prev.filter(i => i.name !== name))
-      const remaining = instances.filter(i => i.name !== name)
-      if (!remaining.some(i => i.active)) setStats(null)
     } catch (e: any) {
       notifications.show({ title: 'Error', message: e.message, color: 'red' })
     } finally {
@@ -728,9 +511,22 @@ export default function SettingsPage() {
   if (loading) return <Loader />
 
   return (
-    <Group align="flex-start" gap="md" wrap="nowrap">
-      <Stack w={480} gap="sm" style={{ flexShrink: 0 }}>
+    <Stack w={480} gap="sm" style={{ flexShrink: 0 }}>
         <Title order={3}>{t('cfg.title')}</Title>
+
+        <Alert color="blue" icon={<IconCloud size={16} />}>
+          <Group justify="space-between" wrap="nowrap" align="center">
+            <div>
+              <Text fw={600}>{t('cfg.overview_moved_title')}</Text>
+              <Text size="sm" c="dimmed">{t('cfg.overview_moved_desc')}</Text>
+            </div>
+            <Button size="xs" variant="light" onClick={() => navigate('/admin/overview')}>
+              {t('cfg.open_overview')}
+            </Button>
+          </Group>
+        </Alert>
+
+        <Divider label={t('cfg.section_moodle')} labelPosition="left" />
 
         {/* ── Saved Moodle Instances ─────────────────────────────────────── */}
         <Paper withBorder p="md" radius="md">
@@ -768,11 +564,10 @@ export default function SettingsPage() {
                     </Group>
                     <Group gap={4} wrap="nowrap">
                       {inst.active && (
-                        <Tooltip label={t('cfg.refresh_metrics')}>
+                        <Tooltip label={t('cfg.open_overview')}>
                           <ActionIcon
                             size="sm" variant="light" color="blue"
-                            loading={loadingStats}
-                            onClick={loadStats}
+                            onClick={() => navigate('/admin/overview')}
                           >
                             <IconRefresh size={12} />
                           </ActionIcon>
@@ -863,9 +658,11 @@ export default function SettingsPage() {
         </Paper>
 
         {/* ── Canvas LMS Connection ──────────────────────────────────────── */}
+        <Divider label={t('cfg.section_integrations')} labelPosition="left" />
         <CanvasSettingsPanel />
 
         {/* ── LLM Provider ──────────────────────────────────────────────── */}
+        <Divider label={t('cfg.section_ai')} labelPosition="left" />
         <Paper withBorder p="md" radius="md">
           <Title order={5} mb="xs">{t('cfg.llm_provider')}</Title>
           <Text size="xs" c="dimmed" mb="sm">
@@ -956,18 +753,12 @@ export default function SettingsPage() {
           </Stack>
         </Paper>
 
+        <Divider label={t('cfg.section_automation')} labelPosition="left" />
         <ScheduledReviewsSection defaultModel={lastModel} />
 
+        <Divider label={t('cfg.section_security')} labelPosition="left" />
         <SecuritySection />
-      </Stack>
-
-      {/* ── Site Overview (right column, fills remaining width) ───────── */}
-      {(loadingStats || stats) && (
-        <Box style={{ flex: 1, minWidth: 0 }}>
-          <SiteOverview stats={stats} loading={loadingStats} />
-        </Box>
-      )}
-    </Group>
+    </Stack>
   )
 }
 
@@ -982,13 +773,108 @@ function SecuritySection() {
   const [busy, setBusy]               = useState(false)
   const [customToken, setCustomToken] = useState('')
   const [showCustom, setShowCustom]   = useState(false)
+  const [diagLoading, setDiagLoading] = useState(false)
+  const [diagError, setDiagError] = useState('')
+  const [caps, setCaps] = useState<MoodleWriteCapabilities | null>(null)
+  const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([])
+  const [auditTotal, setAuditTotal] = useState(0)
+  const [auditOffset, setAuditOffset] = useState(0)
+  const [auditLimit] = useState(20)
+  const [auditQuery, setAuditQuery] = useState('')
+  const [auditArea, setAuditArea] = useState('')
+  const [auditStatus, setAuditStatus] = useState('')
+  const [operatorName, setOperatorName] = useState('')
+  const [rolePolicy, setRolePolicy] = useState<AdminPolicy | null>(null)
+  const [roleIdsInput, setRoleIdsInput] = useState('')
 
   useEffect(() => {
     api.auth.status()
       .then(s => setEnabled(s.enabled))
       .catch(() => {})
       .finally(() => setLoading(false))
+    api.auth.getOperator()
+      .then(r => setOperatorName(r.name || ''))
+      .catch(() => {})
   }, [])
+
+  const saveOperator = async () => {
+    setBusy(true)
+    try {
+      const res = await api.auth.setOperator(operatorName)
+      setOperatorName(res.name)
+      notifications.show({ color: 'green', message: t('cfg.security_operator_saved') })
+    } catch (e: unknown) {
+      notifications.show({ color: 'red', message: String(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const saveRolePolicy = async () => {
+    setBusy(true)
+    try {
+      const res = await api.settings.setAdminPolicy(roleIdsInput)
+      setRolePolicy(res)
+      setRoleIdsInput(res.allowed_role_ids)
+      notifications.show({ color: 'green', message: t('cfg.security_roles_saved') })
+    } catch (e: unknown) {
+      notifications.show({ color: 'red', message: String(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const exportAuditCsv = async () => {
+    try {
+      const csv = await api.settings.exportAuditLogs(1000)
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      const ts = new Date().toISOString().replace(/[:.]/g, '-')
+      link.href = url
+      link.download = `admin-audit-${ts}.csv`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (e: unknown) {
+      notifications.show({ color: 'red', message: String(e) })
+    }
+  }
+
+  const loadDiagnostics = async () => {
+    setDiagLoading(true)
+    try {
+      const [capRes, logRes, policyRes] = await Promise.all([
+        api.moodle.writeCapabilities(),
+        api.settings.auditLogs({
+          limit: auditLimit,
+          offset: auditOffset,
+          area: auditArea,
+          status: auditStatus,
+          q: auditQuery.trim(),
+        }),
+        api.settings.getAdminPolicy(),
+      ])
+      setCaps(capRes)
+      setAuditLogs(logRes.items)
+      setAuditTotal(logRes.total)
+      setRolePolicy(policyRes)
+      setRoleIdsInput(policyRes.allowed_role_ids)
+      setDiagError('')
+    } catch (e: unknown) {
+      setDiagError(String(e))
+      setCaps(null)
+      setAuditLogs([])
+      setAuditTotal(0)
+    } finally {
+      setDiagLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadDiagnostics()
+  }, [auditLimit, auditOffset, auditArea, auditStatus])
 
   const generate = async () => {
     setBusy(true)
@@ -1112,6 +998,199 @@ function SecuritySection() {
             </Button>
           </Group>
         )}
+
+        <Group align="flex-end">
+          <TextInput
+            style={{ flex: 1 }}
+            label={t('cfg.security_operator_label')}
+            placeholder={t('cfg.security_operator_ph')}
+            value={operatorName}
+            onChange={e => setOperatorName(e.currentTarget.value)}
+          />
+          <Button size="sm" onClick={saveOperator} loading={busy}>
+            {t('common.save')}
+          </Button>
+        </Group>
+
+        <Group align="flex-end">
+          <TextInput
+            style={{ flex: 1 }}
+            label={t('cfg.security_roles_label')}
+            placeholder={t('cfg.security_roles_ph')}
+            description={t('cfg.security_roles_desc')}
+            value={roleIdsInput}
+            onChange={e => setRoleIdsInput(e.currentTarget.value)}
+          />
+          <Button size="sm" onClick={saveRolePolicy} loading={busy}>
+            {t('common.save')}
+          </Button>
+        </Group>
+        {rolePolicy && (
+          <Group gap={6}>
+            <Text size="xs" c="dimmed">{t('cfg.security_roles_effective')}</Text>
+            {rolePolicy.parsed_role_ids.map(roleId => (
+              <Badge key={roleId} size="xs" variant="light" color="gray">{roleId}</Badge>
+            ))}
+          </Group>
+        )}
+
+        <Divider my="xs" />
+
+        <Group justify="space-between" align="center">
+          <Title order={6}>{t('cfg.security_diag_title')}</Title>
+          <Group gap="xs">
+            <Button
+              size="xs"
+              variant="light"
+              leftSection={<IconDownload size={12} />}
+              onClick={exportAuditCsv}
+            >
+              {t('cfg.security_export_csv')}
+            </Button>
+            <Button
+              size="xs"
+              variant="light"
+              leftSection={diagLoading ? <Loader size="xs" /> : <IconRefresh size={12} />}
+              onClick={loadDiagnostics}
+              disabled={diagLoading}
+            >
+              {t('common.refresh')}
+            </Button>
+          </Group>
+        </Group>
+
+        {diagError && (
+          <Alert color="yellow">{diagError}</Alert>
+        )}
+
+        <Paper withBorder p="sm" radius="sm">
+          <Group justify="space-between" mb="xs">
+            <Text size="sm" fw={600}>{t('cfg.security_diag_caps')}</Text>
+            <Badge size="xs" color={caps?.ok ? 'teal' : 'orange'}>
+              {caps?.ok ? t('cfg.security_diag_ready') : t('cfg.security_diag_missing')}
+            </Badge>
+          </Group>
+          {diagLoading && !caps ? (
+            <Loader size="xs" />
+          ) : !caps ? (
+            <Text size="xs" c="dimmed">{t('cfg.security_diag_unavailable')}</Text>
+          ) : (
+            <Stack gap={6}>
+              {caps.checks.map(check => (
+                <Group key={check.key} justify="space-between" align="flex-start" wrap="nowrap">
+                  <div>
+                    <Text size="xs" fw={600}>{check.key}</Text>
+                    {!check.ok && (
+                      <Text size="xs" c="dimmed">
+                        {t('cfg.security_diag_missing_fns')} {check.missing.join(', ')}
+                      </Text>
+                    )}
+                  </div>
+                  <Badge size="xs" color={check.ok ? 'teal' : 'orange'}>
+                    {check.ok ? t('cfg.security_diag_ok') : t('cfg.security_diag_missing_short')}
+                  </Badge>
+                </Group>
+              ))}
+            </Stack>
+          )}
+        </Paper>
+
+        <Paper withBorder p="sm" radius="sm">
+          <Text size="sm" fw={600} mb="xs">{t('cfg.security_diag_audit')}</Text>
+          <Group grow mb="xs" align="flex-end">
+            <TextInput
+              label={t('cfg.security_diag_filter_query')}
+              placeholder={t('cfg.security_diag_filter_query_ph')}
+              value={auditQuery}
+              onChange={e => setAuditQuery(e.currentTarget.value)}
+            />
+            <Select
+              label={t('cfg.security_diag_filter_area')}
+              data={[
+                { value: '', label: t('cfg.security_diag_filter_all') },
+                { value: 'users', label: 'users' },
+                { value: 'enrollment', label: 'enrollment' },
+              ]}
+              value={auditArea}
+              onChange={v => { setAuditArea(v ?? ''); setAuditOffset(0) }}
+            />
+            <Select
+              label={t('cfg.security_diag_filter_status')}
+              data={[
+                { value: '', label: t('cfg.security_diag_filter_all') },
+                { value: 'ok', label: 'ok' },
+              ]}
+              value={auditStatus}
+              onChange={v => { setAuditStatus(v ?? ''); setAuditOffset(0) }}
+            />
+            <Button variant="light" onClick={() => { setAuditOffset(0); loadDiagnostics() }}>
+              {t('cfg.security_diag_apply_filters')}
+            </Button>
+          </Group>
+          {diagLoading && auditLogs.length === 0 ? (
+            <Loader size="xs" />
+          ) : auditLogs.length === 0 ? (
+            <Text size="xs" c="dimmed">{t('cfg.security_diag_no_audit')}</Text>
+          ) : (
+            <>
+            <Table withTableBorder striped>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t('cfg.security_diag_col_time')}</Table.Th>
+                  <Table.Th>{t('cfg.security_diag_col_actor')}</Table.Th>
+                  <Table.Th>{t('cfg.security_diag_col_action')}</Table.Th>
+                  <Table.Th>{t('cfg.security_diag_col_target')}</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {auditLogs.map(row => (
+                  <Table.Tr key={row.id}>
+                    <Table.Td>
+                      <Text size="xs">{new Date(`${row.created_at}Z`).toLocaleString()}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="xs" c="dimmed">{row.actor || '—'}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="xs" fw={600}>{row.area}.{row.action}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="xs" c="dimmed">{row.target_type}:{row.target_id}</Text>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+            <Group justify="space-between" mt="xs">
+              <Text size="xs" c="dimmed">
+                {t('cfg.security_diag_page_info', {
+                  from: auditTotal === 0 ? 0 : auditOffset + 1,
+                  to: Math.min(auditOffset + auditLogs.length, auditTotal),
+                  total: auditTotal,
+                })}
+              </Text>
+              <Group gap="xs">
+                <Button
+                  size="xs"
+                  variant="light"
+                  disabled={auditOffset <= 0}
+                  onClick={() => setAuditOffset(v => Math.max(0, v - auditLimit))}
+                >
+                  {t('cfg.security_diag_prev')}
+                </Button>
+                <Button
+                  size="xs"
+                  variant="light"
+                  disabled={auditOffset + auditLimit >= auditTotal}
+                  onClick={() => setAuditOffset(v => v + auditLimit)}
+                >
+                  {t('cfg.security_diag_next')}
+                </Button>
+              </Group>
+            </Group>
+            </>
+          )}
+        </Paper>
       </Stack>
     </Paper>
   )

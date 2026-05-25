@@ -1,5 +1,6 @@
 """SQLite database setup — courses, versions, settings."""
 
+import ast
 import json
 import sqlite3
 from contextlib import contextmanager
@@ -191,6 +192,9 @@ def _seed_settings():
         "last_model":   "",
         "auth_operator_name": "",
         "admin_allowed_role_ids": "3,4,5",
+        "admin_write_rate_limit_max": "30",
+        "admin_write_rate_limit_window_s": "60",
+        "audit_retention_days": "180",
     }
     with db() as conn:
         for key, value in defaults.items():
@@ -481,6 +485,33 @@ def update_schedule_run(schedule_id: int, last_run_at: str, next_run_at: str):
 
 # ── Curriculum evaluations ────────────────────────────────────────────────────
 
+def _safe_parse_scores_json(raw: str | None) -> dict:
+    if not raw:
+        return {}
+
+    # First try strict JSON.
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, json.JSONDecodeError, ValueError):
+        # Fallback for legacy rows that may contain Python dict repr strings.
+        try:
+            parsed = ast.literal_eval(raw)
+        except (ValueError, SyntaxError):
+            return {}
+
+    if not isinstance(parsed, dict):
+        return {}
+
+    out: dict[str, int] = {}
+    for key, value in parsed.items():
+        if not isinstance(key, str):
+            continue
+        try:
+            out[key] = int(value)
+        except (TypeError, ValueError):
+            continue
+    return out
+
 def save_curriculum_eval(shortname: str, version_id: int | None, model_used: str,
                          scores: dict, reasoning: str):
     with db() as conn:
@@ -504,7 +535,7 @@ def get_curriculum_eval(shortname: str) -> dict | None:
     if not row:
         return None
     r = dict(row)
-    r["scores"] = json.loads(r.get("scores_json", "{}"))
+    r["scores"] = _safe_parse_scores_json(r.get("scores_json"))
     return r
 
 
@@ -514,7 +545,7 @@ def list_curriculum_evals() -> list[dict]:
     result = []
     for row in rows:
         r = dict(row)
-        r["scores"] = json.loads(r.get("scores_json", "{}"))
+        r["scores"] = _safe_parse_scores_json(r.get("scores_json"))
         result.append(r)
     return result
 
@@ -583,3 +614,25 @@ def list_admin_audits(limit: int = 100, offset: int = 0,
         record["detail"] = json.loads(record.pop("detail_json", "{}"))
         result.append(record)
     return result, int(total)
+
+
+def prune_admin_audits(retention_days: int, dry_run: bool = False) -> int:
+    safe_days = max(1, int(retention_days))
+    threshold = f"-{safe_days} days"
+
+    with db() as conn:
+        count_row = conn.execute(
+            "SELECT COUNT(*) AS c FROM admin_audit_logs "
+            "WHERE datetime(created_at) < datetime('now', ?)",
+            (threshold,),
+        ).fetchone()
+        would_delete = int(count_row["c"] if count_row else 0)
+
+        if not dry_run and would_delete:
+            conn.execute(
+                "DELETE FROM admin_audit_logs "
+                "WHERE datetime(created_at) < datetime('now', ?)",
+                (threshold,),
+            )
+
+    return would_delete

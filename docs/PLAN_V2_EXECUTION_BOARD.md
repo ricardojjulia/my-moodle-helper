@@ -1,5 +1,7 @@
 # Plan v2 Execution Board (Sprint 1/2/3)
 
+<!-- markdownlint-disable MD032 -->
+
 Last updated: 2026-05-24
 Source plan: docs/PLAN_V2_STRATEGIC.md
 
@@ -34,11 +36,11 @@ Establish regression safety and baseline security controls.
 Owner: QA + BE
 
 Tasks:
-- [ ] Create backend test scaffold with isolated test database fixtures.
-- [ ] Add tests for admin write endpoints (users/enrollment happy + failure paths).
-- [ ] Add tests for audit and admin policy endpoints.
-- [ ] Add tests for review/regeneration endpoints.
-- [ ] Add contract checks for high-risk response shapes consumed by frontend.
+- [x] Create backend test scaffold with isolated test database fixtures.
+- [x] Add tests for admin write endpoints (users/enrollment happy + failure paths).
+- [x] Add tests for audit and admin policy endpoints.
+- [x] Add tests for review/regeneration endpoints.
+- [x] Add contract checks for high-risk response shapes consumed by frontend.
 
 Acceptance criteria:
 - Test suite runs locally and in CI with repeatable results.
@@ -63,10 +65,10 @@ Acceptance criteria:
 Owner: BE + OPS
 
 Tasks:
-- [ ] Define and document single-admin vs team-admin operating mode.
-- [ ] Add request throttling or rate limiting on sensitive write endpoints.
-- [ ] Add audit retention policy and pruning mechanism.
-- [ ] Ensure blocked and failed admin operations are consistently logged.
+- [x] Define and document single-admin vs team-admin operating mode.
+- [x] Add request throttling or rate limiting on sensitive write endpoints.
+- [x] Add audit retention policy and pruning mechanism.
+- [x] Ensure blocked and failed admin operations are consistently logged.
 
 Acceptance criteria:
 - Sensitive endpoints have guardrails against abuse.
@@ -75,7 +77,7 @@ Acceptance criteria:
 
 ### Sprint 1 Exit Gate
 
-- [ ] CI enforces build + type checks + tests.
+- [x] CI enforces build + type checks + tests.
 - [ ] P0 reliability and baseline security items are complete.
 
 ---
@@ -195,3 +197,5 @@ Owner: PM
 - [ ] Sprint 1/2/3 exit gates all passed.
 - [ ] P0/P1 commitments delivered with validated outcomes.
 - [ ] v1.0 readiness decision supported by evidence (tests, deploy reliability, security, ops docs).
+
+<!-- markdownlint-enable MD032 -->

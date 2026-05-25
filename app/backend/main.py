@@ -1,7 +1,10 @@
 """FastAPI entry point."""
 
 from contextlib import asynccontextmanager
+from collections import deque
 from datetime import datetime
+from threading import Lock
+from time import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -19,6 +22,51 @@ except ImportError:
     _HAS_APSCHEDULER = False
 
 _scheduler = None
+_rate_limit_lock = Lock()
+_rate_limit_buckets: dict[str, deque[float]] = {}
+
+
+def _is_sensitive_write(path: str, method: str) -> bool:
+    if method.upper() not in {"POST", "PUT", "PATCH", "DELETE"}:
+        return False
+    sensitive_prefixes = (
+        "/api/moodle/users",
+        "/api/moodle/courses/",
+        "/api/settings/admin-policy",
+        "/api/settings/audit-policy",
+        "/api/settings/audit-logs/prune",
+    )
+    if path.startswith("/api/moodle/courses/"):
+        # Limit only enrollment/role write operations under course routes.
+        return (
+            "/enrollments" in path
+            or "/roles/assign" in path
+            or "/roles/unassign" in path
+        )
+    return path.startswith(sensitive_prefixes)
+
+
+def _allow_write_request(client_key: str, path: str, max_requests: int, window_s: int) -> bool:
+    now = time()
+    window = max(1, int(window_s))
+    max_count = max(1, int(max_requests))
+    bucket_key = f"{client_key}:{path}"
+
+    with _rate_limit_lock:
+        bucket = _rate_limit_buckets.get(bucket_key)
+        if bucket is None:
+            bucket = deque()
+            _rate_limit_buckets[bucket_key] = bucket
+
+        cutoff = now - window
+        while bucket and bucket[0] < cutoff:
+            bucket.popleft()
+
+        if len(bucket) >= max_count:
+            return False
+
+        bucket.append(now)
+        return True
 
 
 def _scheduler_tick():
@@ -80,12 +128,36 @@ async def auth_middleware(request: Request, call_next):
 
     token = app_settings.get("auth_token", "")
     if not token:
-        # Auth disabled — let request through
+        # Auth disabled — let request through after write-rate checks.
+        if _is_sensitive_write(path, request.method):
+            try:
+                max_requests = int((app_settings.get("admin_write_rate_limit_max", "30") or "30").strip())
+            except ValueError:
+                max_requests = 30
+            try:
+                window_s = int((app_settings.get("admin_write_rate_limit_window_s", "60") or "60").strip())
+            except ValueError:
+                window_s = 60
+            client_host = (request.client.host if request.client else "local") or "local"
+            if not _allow_write_request(client_host, path, max_requests, window_s):
+                return JSONResponse(status_code=429, content={"detail": "Too many write requests; please retry shortly."})
         return await call_next(request)
 
     auth_header = request.headers.get("Authorization", "")
     if auth_header == f"Bearer {token}":
         request.state.audit_actor = configured_actor or "token-admin"
+        if _is_sensitive_write(path, request.method):
+            try:
+                max_requests = int((app_settings.get("admin_write_rate_limit_max", "30") or "30").strip())
+            except ValueError:
+                max_requests = 30
+            try:
+                window_s = int((app_settings.get("admin_write_rate_limit_window_s", "60") or "60").strip())
+            except ValueError:
+                window_s = 60
+            client_host = (request.client.host if request.client else "local") or "local"
+            if not _allow_write_request(client_host, path, max_requests, window_s):
+                return JSONResponse(status_code=429, content={"detail": "Too many write requests; please retry shortly."})
         return await call_next(request)
 
     return JSONResponse(status_code=401, content={"detail": "Unauthorized"})

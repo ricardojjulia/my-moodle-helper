@@ -362,28 +362,143 @@ The step list inside the course card tracks each phase in real time.
 
 ### Generating a Moodle Token
 
+Use a dedicated integration user and a custom External Service for the cleanest and most predictable setup.
+
 1. Log in to Moodle as an administrator.
-2. Go to **Site administration → Server → Web services → Manage tokens**.
-3. Click **Create token**, select a user with admin or manager rights, and choose the **Moodle mobile web service** (or create a custom service with the functions listed below).
-4. Copy the token and paste it into Settings → Moodle Instances.
+1. Enable web services: **Site administration → Advanced features → Enable web services**.
+1. Enable REST protocol: **Site administration → Plugins → Web services → Manage protocols → REST = Enabled**.
+1. Create or select a dedicated integration user.
+1. Create a custom External Service and add the functions from the matrix below.
+1. Create a token for that user + service from **Site administration → Server → Web services → Manage tokens → Create token**.
+1. Copy the token and paste it into **Settings → Moodle Instances** in this app.
+
+> This section refers to the Moodle web service token used by this app to call Moodle REST APIs. It is different from this app's internal API auth token.
 
 ### Required Webservice Functions
 
+Add these functions to the token's External Service.
+
+#### A) Core Connectivity and Course Catalog
+
 | Function | Used for |
 | -------- | -------- |
-| `core_webservice_get_site_info` | Ping / site stats |
-| `core_course_get_courses` | Browse courses |
-| `core_course_get_contents` | Read section content |
-| `core_course_create_courses` | Deploy new courses |
+| `core_webservice_get_site_info` | Connection test and available-function diagnostics |
+| `core_course_get_courses` | Course browsing and site-level course metrics |
+| `core_course_get_categories` | Category filters and selection |
+| `core_course_get_contents` | Section/activity inspection and deploy section mapping |
+
+#### B) Deploy and Course Content Push
+
+| Function | Used for |
+| -------- | -------- |
+| `core_course_create_courses` | Create course shell during deploy |
 | `core_course_update_courses` | Update course metadata |
-| `core_course_edit_section` | Push section summaries |
-| `core_enrol_get_enrolled_users` | Student analytics |
-| `core_user_get_users` | Site user stats |
-| `core_course_get_categories` | Category list |
-| `gradereport_user_get_grade_items` | Grade book + analytics |
-| `mod_forum_add_discussion` | Seed forum discussions |
-| `mod_quiz_get_quizzes_by_courses` | Quiz analytics |
-| `mod_quiz_get_user_attempts` | Per-quiz pass rates |
+| `core_course_edit_section` | Push section names and summaries |
+| `mod_forum_add_discussion` | Seed module forum questions |
+
+#### C) User Directory and Lifecycle Admin Writes
+
+| Function | Used for |
+| -------- | -------- |
+| `core_user_get_users` | User directory and site user metrics |
+| `core_user_create_users` | Create users |
+| `core_user_update_users` | Suspend/unsuspend users |
+| `core_user_delete_users` | Delete users |
+
+#### D) Enrollment and Role Management Admin Writes
+
+| Function | Used for |
+| -------- | -------- |
+| `core_enrol_get_enrolled_users` | Roster reads and enrollment analytics |
+| `enrol_manual_enrol_users` | Enroll users |
+| `enrol_manual_unenrol_users` | Unenroll users |
+| `core_role_assign_roles` | Assign course roles |
+| `core_role_unassign_roles` | Unassign course roles |
+| `core_course_get_courses_by_field` | Resolve course context for role assignment calls |
+
+#### E) Analytics and Gradebook
+
+| Function | Used for |
+| -------- | -------- |
+| `gradereport_user_get_grade_items` | Gradebook and distribution metrics |
+| `mod_quiz_get_quizzes_by_courses` | Quiz analytics lookup |
+| `mod_quiz_get_user_attempts` | Per-quiz attempts and pass-rate metrics |
+
+#### F) Backup File Discovery (optional but recommended)
+
+| Function | Used for |
+| -------- | -------- |
+| `core_files_get_files` | Listing existing backup files in Moodle |
+
+### Minimum Permission Profiles
+
+Use the profile matching your rollout stage:
+
+| Profile | Include |
+| ------- | ------- |
+| Read-only insights | A + E (+ F optional) |
+| Deploy without user admin | A + B + E + F |
+| Full admin control center (recommended) | A + B + C + D + E + F |
+
+### Post-Setup Validation
+
+After setting the token in this app:
+
+1. Run **Settings → Test Moodle connection**.
+2. Open **Admin → Integrations & Settings → Security** and verify write capability diagnostics.
+3. Validate feature paths you enabled:
+
+- Users: list/create/suspend/delete
+- Enrollment: roster/enroll/unenroll/assign role/unassign role
+- Deploy: sections pushed and forum seeding count reported
+
+You can also call:
+
+- `GET /api/moodle/write-capabilities`
+
+If any check is missing, add the missing function to the External Service and retry.
+
+### Security Operating Modes (Single-admin vs Team-admin)
+
+This app supports two practical operating patterns for internal deployments.
+
+#### Mode A: Single-admin (default simple mode)
+
+Use when one trusted operator manages generation, review, deploy, and admin writes.
+
+Recommended settings:
+
+- Keep API auth enabled with one token in **Settings -> Security**.
+- Set a clear operator name in **Settings -> Security -> Audit actor identity**.
+- Keep role allowlist minimal (for example `3,4,5`) in **Settings -> Security**.
+- Keep write-rate limiting enabled (defaults are `30` writes per `60` seconds).
+- Keep audit retention at default (`180` days) unless policy requires shorter/longer.
+
+#### Mode B: Team-admin (shared operations mode)
+
+Use when multiple staff members perform admin writes.
+
+Recommended controls:
+
+- Enable API auth and rotate tokens on a regular schedule.
+- Require each operator to send an actor identity (or set a shared named operator per environment).
+- Keep strict role allowlist and review it periodically.
+- Use write-rate limiting to protect against accidental bulk actions.
+- Set and enforce audit retention policy, and run periodic pruning.
+- Export audit logs regularly for operational review.
+
+Operational endpoints for policy controls:
+
+- `GET /api/settings/audit-policy`
+- `POST /api/settings/audit-policy`
+- `POST /api/settings/audit-logs/prune`
+
+Quick verification checklist:
+
+1. `GET /api/moodle/write-capabilities` reports expected readiness.
+2. Admin write actions produce audit rows with actor, area, action, target, status.
+3. Rate limit returns `429` if write threshold is exceeded.
+4. Audit prune dry-run reports expected candidate count before delete.
 
 ### Deploying a Course to Moodle
 

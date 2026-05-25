@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from ..database import get_settings, set_setting, list_admin_audits
+from ..database import get_settings, set_setting, list_admin_audits, prune_admin_audits
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -176,6 +176,15 @@ class AdminPolicyIn(BaseModel):
     allowed_role_ids: str = ""
 
 
+class AuditPolicyIn(BaseModel):
+    retention_days: int = 180
+
+
+class AuditPruneIn(BaseModel):
+    retention_days: int | None = None
+    dry_run: bool = False
+
+
 @router.get("/auth/status")
 def auth_status():
     """Return whether a token is configured (never returns the token itself)."""
@@ -322,3 +331,44 @@ def set_admin_policy(body: AdminPolicyIn):
     normalized = ",".join(str(v) for v in sorted(set(parsed)))
     set_setting("admin_allowed_role_ids", normalized)
     return {"ok": True, "allowed_role_ids": normalized, "parsed_role_ids": sorted(set(parsed))}
+
+
+@router.get("/audit-policy")
+def get_audit_policy():
+    raw = (get_settings().get("audit_retention_days", "180") or "180").strip()
+    try:
+        days = int(raw)
+    except ValueError:
+        days = 180
+    days = max(1, min(days, 3650))
+    return {"retention_days": days}
+
+
+@router.post("/audit-policy")
+def set_audit_policy(body: AuditPolicyIn):
+    days = int(body.retention_days)
+    if days < 1 or days > 3650:
+        raise HTTPException(400, "retention_days must be between 1 and 3650")
+    set_setting("audit_retention_days", str(days))
+    return {"ok": True, "retention_days": days}
+
+
+@router.post("/audit-logs/prune")
+def prune_audit_logs(body: AuditPruneIn):
+    configured_raw = (get_settings().get("audit_retention_days", "180") or "180").strip()
+    try:
+        configured_days = int(configured_raw)
+    except ValueError:
+        configured_days = 180
+
+    days = configured_days if body.retention_days is None else int(body.retention_days)
+    if days < 1 or days > 3650:
+        raise HTTPException(400, "retention_days must be between 1 and 3650")
+
+    deleted = prune_admin_audits(days, dry_run=body.dry_run)
+    return {
+        "ok": True,
+        "retention_days": days,
+        "dry_run": bool(body.dry_run),
+        "deleted": deleted,
+    }
